@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Controle de Apurações</title>
+
+<!-- Firebase (compat SDK via CDN, sem necessidade de build/npm) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --azul:#1a4f8a; --azul2:#2567b0; --azul-bg:#e8f0f9;
+    --verde:#2e7d32; --verde-bg:#e8f5e9;
+    --laranja:#b45309; --laranja-bg:#fef3c7;
+    --vermelho:#991b1b; --vermelho-bg:#fee2e2;
+    --c1:#f4f5f7; --c2:#e9eaec; --c3:#b0b3ba; --c4:#6b7280;
+    --texto:#1a1d23; --borda:#d1d5db; --branco:#ffffff;
+    --r:8px;
+  }
+  body { font-family:'Segoe UI',system-ui,sans-serif; font-size:14px; color:var(--texto); background:var(--c1); min-height:100vh; }
+
+  /* LOADER */
+  #loader {
+    position:fixed; inset:0; background:var(--azul);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    z-index:999; color:#fff; font-size:15px;
+  }
+  #loader .spin {
+    width:48px; height:48px; border:4px solid rgba(255,255,255,.3);
+    border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #loader.hidden { display:none; }
+
+  /* CONN STATUS */
+  #connStatus {
+    position:fixed; bottom:16px; right:16px; z-index:998;
+    padding:6px 14px; border-radius:20px; font-size:12px; font-weight:600;
+    display:flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(0,0,0,.15);
+    transition:.2s;
+  }
+  #connStatus.online { background:var(--verde-bg); color:var(--verde); border:1px solid #a7f3d0; }
+  #connStatus.offline { background:var(--vermelho-bg); color:var(--vermelho); border:1px solid #fca5a5; }
+  .dot { width:8px; height:8px; border-radius:50%; background:currentColor; }
+  .dot.pulse { animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* HEADER */
+  header {
+    background:var(--azul); color:#fff; padding:0 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    height:60px; position:sticky; top:0; z-index:50;
+    box-shadow:0 2px 6px rgba(0,0,0,.18);
+  }
+  .hl { display:flex; align-items:center; gap:14px; }
+  .ht { font-size:17px; font-weight:600; letter-spacing:.3px; }
+  .hs { font-size:11px; opacity:.7; letter-spacing:.6px; text-transform:uppercase; margin-top:2px; }
+  .btn-print {
+    background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35);
+    color:#fff; border-radius:7px; padding:7px 16px; font-size:13px; cursor:pointer;
+    display:flex; align-items:center; gap:7px; transition:.15s;
+  }
+  .btn-print:hover { background:rgba(255,255,255,.28); }
+
+  /* CONTAINER */
+  .container { max-width:1500px; margin:0 auto; padding:24px 24px 40px; }
+
+  /* STATS */
+  .sg { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
+  .sc {
+    background:var(--branco); border:1px solid var(--borda);
+    border-radius:var(--r); padding:16px 18px; border-left:4px solid;
+  }
+  .sc.total { border-left-color:var(--azul); }
+  .sc.resp  { border-left-color:var(--verde); }
+  .sc.pend  { border-left-color:var(--laranja); }
+  .sc.reit  { border-left-color:var(--vermelho); }
+  .sl { font-size:11px; color:var(--c4); font-weight:500; text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
+  .sv { font-size:28px; font-weight:700; line-height:1; }
+  .sc.total .sv { color:var(--azul); }
+  .sc.resp  .sv { color:var(--verde); }
+  .sc.pend  .sv { color:var(--laranja); }
+  .sc.reit  .sv { color:var(--vermelho); }
+
+  /* TOOLBAR */
+  .toolbar {
+    display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    background:var(--branco); border:1px solid var(--borda);
+    border-radius:var(--r); padding:12px 16px; margin-bottom:16px;
+  }
+  .toolbar input, .toolbar select {
+    border:1px solid var(--borda); border-radius:6px; padding:7px 11px;
+    font-size:13px; color:var(--texto); background:var(--c1); outline:none; transition:.15s;
+  }
+  .toolbar input:focus, .toolbar select:focus { border-color:var(--azul2); background:#fff; }
+  .toolbar input[type=text] { flex:1 1 220px; min-width:160px; }
+  .tr { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .btn {
+    display:inline-flex; align-items:center; gap:6px;
+    border-radius:7px; padding:8px 16px; font-size:13px; font-weight:500; cursor:pointer; border:none; transition:.15s;
+  }
+  .btn-primary { background:var(--azul); color:#fff; }
+  .btn-primary:hover { background:var(--azul2); }
+  .btn-outline { background:#fff; color:var(--c4); border:1px solid var(--borda); }
+  .btn-outline:hover { border-color:var(--c3); color:var(--texto); }
+  .btn-sm { padding:4px 10px; font-size:11.5px; }
+  .btn-danger { background:var(--vermelho-bg); color:var(--vermelho); border:1px solid #fca5a5; }
+  .btn-danger:hover { background:#fecaca; }
+
+  /* TABLE */
+  .tw { background:var(--branco); border:1px solid var(--borda); border-radius:var(--r); overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .ts { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead tr { background:var(--azul); color:#fff; }
+  thead th {
+    padding:11px 10px; text-align:left; font-weight:600; font-size:11px;
+    letter-spacing:.4px; text-transform:uppercase; white-space:nowrap;
+    cursor:pointer; user-select:none; border-right:1px solid rgba(255,255,255,.12);
+  }
+  thead th:last-child { border-right:none; }
+  thead th:hover { background:var(--azul2); }
+  tbody tr { border-bottom:1px solid var(--c2); transition:.1s; }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover { background:var(--azul-bg); }
+  tbody tr.even { background:var(--c1); }
+  tbody tr.even:hover { background:var(--azul-bg); }
+  td { padding:9px 10px; vertical-align:middle; }
+  .empty-row td { text-align:center; padding:48px; color:var(--c4); }
+
+  /* BADGES */
+  .badge {
+    display:inline-block; padding:2px 8px; border-radius:5px;
+    font-size:10.5px; font-weight:700; letter-spacing:.3px; white-space:nowrap;
+  }
+  .b-sei    { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+  .b-sigrc  { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+  .b-email  { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+  .b-mds    { background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; }
+  .b-mon    { background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
+  .b-pres   { background:#fce7f3; color:#9d174d; border:1px solid #f9a8d4; }
+  .b-mp     { background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; }
+  .b-outro  { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
+  .b-sim    { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+  .b-nao    { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .b-resp   { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+  .b-pend   { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+  .num { font-weight:700; color:var(--azul); font-size:13px; }
+  .mono { font-family:'Courier New',monospace; font-size:11.5px; }
+
+  /* PAGINAÇÃO */
+  .pagination {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; border-top:1px solid var(--c2);
+    font-size:13px; color:var(--c4);
+  }
+  .page-btns { display:flex; gap:4px; }
+  .page-btns button {
+    width:32px; height:32px; border-radius:6px; border:1px solid var(--borda);
+    background:#fff; font-size:13px; cursor:pointer; transition:.1s;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .page-btns button:hover { border-color:var(--azul2); color:var(--azul); }
+  .page-btns button.active { background:var(--azul); color:#fff; border-color:var(--azul); font-weight:700; }
+  .page-btns button:disabled { opacity:.35; cursor:default; }
+  .per-page { display:flex; align-items:center; gap:8px; }
+  .per-page select { border:1px solid var(--borda); border-radius:6px; padding:4px 8px; font-size:13px; }
+
+  /* MODAL */
+  .overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:2rem 1rem; overflow-y:auto; }
+  .overlay.hidden { display:none; }
+  .modal { background:#fff; border-radius:12px; width:100%; max-width:660px; box-shadow:0 20px 60px rgba(0,0,0,.2); animation:sI .2s ease; }
+  @keyframes sI { from{transform:translateY(-16px);opacity:0} to{transform:none;opacity:1} }
+  .mh { padding:18px 22px; border-bottom:1px solid var(--borda); display:flex; align-items:center; justify-content:space-between; background:var(--azul); border-radius:12px 12px 0 0; color:#fff; }
+  .mh h2 { font-size:16px; font-weight:600; }
+  .mc { background:rgba(255,255,255,.2); border:none; color:#fff; width:30px; height:30px; border-radius:50%; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:.15s; }
+  .mc:hover { background:rgba(255,255,255,.35); }
+  .mb { padding:20px 22px; display:flex; flex-direction:column; gap:14px; }
+  .mf { padding:14px 22px; border-top:1px solid var(--borda); display:flex; justify-content:flex-end; gap:10px; background:var(--c1); border-radius:0 0 12px 12px; }
+  .fr { display:grid; gap:12px; }
+  .fr.c2 { grid-template-columns:1fr 1fr; }
+  .fr.c3 { grid-template-columns:1fr 1fr 1fr; }
+  .fi { display:flex; flex-direction:column; gap:5px; }
+  .fi label { font-size:11.5px; font-weight:600; color:var(--c4); text-transform:uppercase; letter-spacing:.4px; }
+  .fi input, .fi select { border:1px solid var(--borda); border-radius:6px; padding:8px 11px; font-size:13px; color:var(--texto); outline:none; transition:.15s; font-family:inherit; background:#fff; }
+  .fi input:focus, .fi select:focus { border-color:var(--azul2); box-shadow:0 0 0 3px rgba(37,103,176,.12); }
+  .fi input.err { border-color:#ef4444; }
+  .rbox { border:1px solid var(--borda); border-radius:8px; padding:14px; background:var(--c1); }
+  .rbox legend { font-size:11.5px; font-weight:600; color:var(--c4); text-transform:uppercase; letter-spacing:.4px; margin-bottom:10px; }
+  .rg { display:flex; gap:20px; margin-bottom:12px; }
+  .rg label { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; }
+  .rs { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .rs.hidden { display:none; }
+
+  /* CONFIRM */
+  .cbox { background:#fff; border-radius:10px; padding:28px; max-width:380px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.2); text-align:center; }
+  .ci { font-size:40px; margin-bottom:12px; }
+  .cbox h3 { font-size:17px; margin-bottom:8px; }
+  .cbox p { color:var(--c4); font-size:13px; margin-bottom:20px; line-height:1.6; }
+  .cb { display:flex; gap:10px; justify-content:center; }
+
+  /* TOAST */
+  #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--texto); color:#fff; padding:11px 22px; border-radius:8px; font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,.2); opacity:0; transition:.25s; pointer-events:none; z-index:999; white-space:nowrap; }
+  #toast.show { opacity:1; }
+
+  /* PRINT */
+  @media print {
+    * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
+    body { background:#fff; font-size:11px; }
+    header,.toolbar,.sg,.no-print,.pagination,#connStatus { display:none!important; }
+    .container { padding:0; max-width:100%; }
+    .tw { box-shadow:none; border:1px solid #ccc; }
+    .ph { display:block!important; margin-bottom:16px; padding-bottom:12px; border-bottom:2px solid var(--azul); }
+    .ts { overflow:visible; }
+    table { font-size:9.5px; page-break-inside:auto; }
+    thead tr { background:var(--azul)!important; }
+    thead th { padding:6px; font-size:9px; }
+    td { padding:5px 6px; }
+    tbody tr { page-break-inside:avoid; }
+    .badge { padding:1px 5px; font-size:8.5px; }
+  }
+  .ph { display:none; }
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="spin"></div>
+  <span>Conectando ao banco de dados…</span>
+</div>
+
+<!-- STATUS DE CONEXÃO -->
+<div id="connStatus" class="offline no-print">
+  <span class="dot pulse"></span>
+  <span id="connText">Conectando…</span>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="hl">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill="rgba(255,255,255,0.18)"/>
+      <path d="M7 9h14M7 14h10M7 19h8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <div><div class="ht">Controle de Apurações</div><div class="hs">Sistema de Gestão de Registros</div></div>
+  </div>
+  <button class="btn-print" onclick="imprimir()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      <rect x="6" y="14" width="12" height="8"/>
+    </svg>
+    Imprimir Relatório
+  </button>
+</header>
+
+<!-- MAIN -->
+<div class="container">
+  <div class="ph" id="ph"></div>
+
+  <!-- STATS -->
+  <div class="sg no-print">
+    <div class="sc total"><div class="sl">Total de Registros</div><div class="sv" id="sTotal">–</div></div>
+    <div class="sc resp" ><div class="sl">Respondidos</div>     <div class="sv" id="sResp">–</div></div>
+    <div class="sc pend" ><div class="sl">Pendentes</div>       <div class="sv" id="sPend">–</div></div>
+    <div class="sc reit" ><div class="sl">Reiterações</div>     <div class="sv" id="sReit">–</div></div>
+    <div class="sc total" style="border-left-color:#7c3aed"><div class="sl">Exibindo</div><div class="sv" id="sView" style="color:#7c3aed">–</div></div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar no-print">
+    <input type="text" id="busca" placeholder="🔍  Buscar por nome, CPF, SEI, atribuído…" oninput="goPage(1)">
+    <select id="fCanal" onchange="goPage(1)">
+      <option value="">Todos os canais</option>
+      <option>SEI</option><option>SIGRC</option><option>E-MAIL</option>
+      <option>MDS</option><option>Monitoramento interno</option>
+      <option>Presencial</option><option>Ministério Público</option>
+      <option>COMAS</option><option>Outro</option>
+    </select>
+    <select id="fStatus" onchange="goPage(1)">
+      <option value="">Todos os status</option>
+      <option value="respondido">Respondidos</option>
+      <option value="pendente">Pendentes</option>
+    </select>
+    <select id="fReit" onchange="goPage(1)">
+      <option value="">Com/sem reiteração</option>
+      <option value="sim">Com reiteração</option>
+      <option value="nao">Sem reiteração</option>
+    </select>
+    <div class="tr">
+      <span id="cntLabel" style="font-size:12px;color:var(--c4)"></span>
+      <button class="btn btn-primary" onclick="abrirNovo()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Novo Registro
+      </button>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="tw">
+    <div class="ts">
+      <table id="tbl">
+        <thead><tr>
+          <th onclick="sort('ordem')">N. Ordem<span id="si-ordem"> ↕</span></th>
+          <th onclick="sort('dataRecebimento')">Dt. Recebimento<span id="si-dataRecebimento"> ↕</span></th>
+          <th onclick="sort('canalRecebido')">Canal<span id="si-canalRecebido"> ↕</span></th>
+          <th onclick="sort('numSeiSigrc')">N.º SEI/SIGRC<span id="si-numSeiSigrc"> ↕</span></th>
+          <th onclick="sort('nome')">Nome<span id="si-nome"> ↕</span></th>
+          <th onclick="sort('cpf')">CPF<span id="si-cpf"> ↕</span></th>
+          <th onclick="sort('reiteracao')">Reiteração<span id="si-reiteracao"> ↕</span></th>
+          <th onclick="sort('atribuidoPara')">Atribuído Para<span id="si-atribuidoPara"> ↕</span></th>
+          <th onclick="sort('respondidoEm')">Respondido Em<span id="si-respondidoEm"> ↕</span></th>
+          <th class="no-print">Ações</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <!-- PAGINAÇÃO -->
+    <div class="pagination no-print">
+      <div class="per-page">
+        Registros por página:
+        <select id="perPage" onchange="goPage(1)">
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="999999">Todos</option>
+        </select>
+      </div>
+      <div id="pageInfo" style="font-size:12px"></div>
+      <div class="page-btns" id="pageBtns"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CADASTRO/EDIÇÃO -->
+<div class="overlay hidden" id="mOverlay">
+  <div class="modal">
+    <div class="mh"><h2 id="mTitle">Novo Registro</h2><button class="mc" onclick="fecharModal()">×</button></div>
+    <div class="mb">
+      <input type="hidden" id="eId">
+      <div class="fr c3">
+        <div class="fi"><label>Data de Recebimento *</label><input type="date" id="fData"></div>
+        <div class="fi"><label>Canal Recebido *</label>
+          <select id="fCanal2">
+            <option>SEI</option><option>SIGRC</option><option>E-MAIL</option>
+            <option>MDS</option><option>Monitoramento interno</option>
+            <option>Presencial</option><option>Ministério Público</option>
+            <option>COMAS</option><option>Outro</option>
+          </select>
+        </div>
+        <div class="fi"><label>N.º SEI / SIGRC</label><input type="text" id="fSei" placeholder="Ex: 0001234/2024"></div>
+      </div>
+      <div class="fr c2">
+        <div class="fi"><label>Nome *</label><input type="text" id="fNome" placeholder="Nome completo"></div>
+        <div class="fi"><label>CPF</label><input type="text" id="fCpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)"></div>
+      </div>
+      <div class="rbox">
+        <legend>Reiteração</legend>
+        <div class="rg">
+          <label><input type="radio" name="reit" value="nao" checked onchange="toggleReit()"> Não</label>
+          <label><input type="radio" name="reit" value="sim" onchange="toggleReit()"> Sim</label>
+        </div>
+        <div class="rs hidden" id="rSub">
+          <div class="fi"><label>Data da Reiteração</label><input type="date" id="fRData"></div>
+          <div class="fi"><label>N.º do Ofício</label><input type="text" id="fROfc" placeholder="N.º do ofício"></div>
+        </div>
+      </div>
+      <div class="fr c2">
+        <div class="fi"><label>Atribuído Para</label><input type="text" id="fAtrib" placeholder="Responsável pela análise"></div>
+        <div class="fi"><label>Respondido Em</label><input type="date" id="fResp"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvar()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        <span id="bSalvar">Cadastrar</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRM -->
+<div class="overlay hidden" id="cOverlay">
+  <div class="cbox">
+    <div class="ci">⚠️</div>
+    <h3>Confirmar Exclusão</h3>
+    <p>Esta ação é irreversível.<br>Deseja realmente excluir este registro?</p>
+    <div class="cb">
+      <button class="btn btn-outline" onclick="fecharConfirm()">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmarDel()">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════
+// CONFIGURAÇÃO DO FIREBASE
+// ════════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyBeUbSFI45r-t3QppxsX8xEV04EYLqmZ_8",
+  authDomain: "controle-apuracoes.firebaseapp.com",
+  databaseURL: "https://controle-apuracoes-default-rtdb.firebaseio.com",
+  projectId: "controle-apuracoes",
+  storageBucket: "controle-apuracoes.firebasestorage.app",
+  messagingSenderId: "304302436551",
+  appId: "1:304302436551:web:9c95df0754882a789dcee2"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db_ref = firebase.database().ref('registros');
+
+// ── STATE ────────────────────────────────────────────────
+let db = [], sfld = 'ordem', sdir = 'asc', pg = 1, delTarget = null, primeiraCarga = true;
+
+// ── FIREBASE: LISTENER EM TEMPO REAL ────────────────────
+// Qualquer pessoa que abrir o link vê os dados sempre atualizados,
+// e qualquer edição é refletida para todos automaticamente.
+db_ref.on('value', (snapshot) => {
+  const val = snapshot.val();
+  if (val) {
+    db = Object.values(val);
+  } else if (primeiraCarga) {
+    // Banco vazio na primeira vez: popula com os dados iniciais (SEED)
+    popularSeed();
+    return; // popularSeed vai re-disparar este listener
+  } else {
+    db = [];
+  }
+  primeiraCarga = false;
+  document.getElementById('loader').classList.add('hidden');
+  setConn(true);
+  render();
+}, (error) => {
+  console.error('Erro Firebase:', error);
+  setConn(false);
+  toast('⚠ Erro de conexão com o banco de dados.');
+});
+
+// Detecta status de conexão real do Firebase
+firebase.database().ref('.info/connected').on('value', (snap) => {
+  setConn(snap.val() === true);
+});
+
+function setConn(online) {
+  const el = document.getElementById('connStatus');
+  const txt = document.getElementById('connText');
+  const dot = el.querySelector('.dot');
+  if (online) {
+    el.className = 'online no-print';
+    txt.textContent = 'Conectado · tempo real';
+    dot.classList.remove('pulse');
+  } else {
+    el.className = 'offline no-print';
+    txt.textContent = 'Reconectando…';
+    dot.classList.add('pulse');
+  }
+}
+
+async function popularSeed() {
+  const obj = {};
+  SEED.forEach(r => obj[r.id] = r);
+  try {
+    await db_ref.set(obj);
+    toast('✓ Base inicial carregada.');
+  } catch(e) {
+    console.error('Erro ao popular seed:', e);
+    toast('⚠ Erro ao carregar dados iniciais.');
+  }
+}
+
+async function saveDb() {
+  // Não usado diretamente; gravações são feitas registro a registro (ver salvar/confirmarDel)
+}
+
+// ── UTILS ────────────────────────────────────────────────
+const fd = s => s ? s.split('-').reverse().join('/') : '—';
+const nextId = () => db.length ? Math.max(...db.map(r=>r.id))+1 : 1;
+const nextOrd = () => db.length ? Math.max(...db.map(r=>r.ordem))+1 : 1;
+
+function maskCpf(el) {
+  let v = el.value.replace(/\D/g,'').slice(0,11);
+  if (v.length>9) v=v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,'$1.$2.$3-$4');
+  else if(v.length>6) v=v.replace(/(\d{3})(\d{3})(\d{1,3})/,'$1.$2.$3');
+  else if(v.length>3) v=v.replace(/(\d{3})(\d{1,3})/,'$1.$2');
+  el.value=v;
+}
+function toast(msg,dur=2800){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),dur);
+}
+const CANAL_CLS = {
+  'SEI':'b-sei','SIGRC':'b-sigrc','E-MAIL':'b-email','MDS':'b-mds',
+  'Monitoramento interno':'b-mon','Presencial':'b-pres',
+  'Ministério Público':'b-mp','COMAS':'b-outro','Outro':'b-outro'
+};
+function badgeCanal(v){ return `<span class="badge ${CANAL_CLS[v]||'b-outro'}">${v||'—'}</span>`; }
+
+// ── FILTER + SORT ────────────────────────────────────────
+function filtrar() {
+  const q = document.getElementById('busca').value.toLowerCase();
+  const c = document.getElementById('fCanal').value;
+  const s = document.getElementById('fStatus').value;
+  const ri = document.getElementById('fReit').value;
+  return db.filter(r => {
+    if(q && !`${r.nome} ${r.cpf} ${r.numSeiSigrc} ${r.atribuidoPara} ${r.ordem}`.toLowerCase().includes(q)) return false;
+    if(c && !r.canalRecebido?.includes(c)) return false;
+    if(s==='respondido' && !r.respondidoEm) return false;
+    if(s==='pendente'   &&  r.respondidoEm) return false;
+    if(ri==='sim' && r.reiteracao!=='sim') return false;
+    if(ri==='nao' && r.reiteracao==='sim') return false;
+    return true;
+  });
+}
+function ordenar(lst) {
+  return [...lst].sort((a,b)=>{
+    let va=a[sfld]??'', vb=b[sfld]??'';
+    if(sfld==='ordem'){va=+va;vb=+vb;}
+    if(va<vb) return sdir==='asc'?-1:1;
+    if(va>vb) return sdir==='asc'?1:-1;
+    return 0;
+  });
+}
+function sort(f){
+  if(sfld===f) sdir=sdir==='asc'?'desc':'asc'; else{sfld=f;sdir='asc';}
+  render();
+}
+
+// ── STATS ────────────────────────────────────────────────
+function stats(filtered) {
+  document.getElementById('sTotal').textContent = db.length;
+  document.getElementById('sResp').textContent  = db.filter(x=>x.respondidoEm).length;
+  document.getElementById('sPend').textContent  = db.filter(x=>!x.respondidoEm).length;
+  document.getElementById('sReit').textContent  = db.filter(x=>x.reiteracao==='sim').length;
+  document.getElementById('sView').textContent  = filtered.length;
+}
+
+// ── PAGINATOR ────────────────────────────────────────────
+function goPage(p){ pg=p; render(); }
+
+function renderPaginator(total, pp) {
+  const pages = Math.max(1, Math.ceil(total/pp));
+  if(pg>pages) pg=pages;
+  const start=(pg-1)*pp+1, end=Math.min(pg*pp,total);
+  document.getElementById('pageInfo').textContent = total===0 ? '' : `${start}–${end} de ${total}`;
+
+  const cont = document.getElementById('pageBtns');
+  if(pp>=999999){ cont.innerHTML=''; return; }
+  let html = `<button onclick="goPage(${pg-1})" ${pg===1?'disabled':''}>‹</button>`;
+
+  const W=2;
+  let lo=Math.max(1,pg-W), hi=Math.min(pages,pg+W);
+  if(lo>1) html+=`<button onclick="goPage(1)">1</button>${lo>2?'<button disabled>…</button>':''}`;
+  for(let i=lo;i<=hi;i++) html+=`<button class="${i===pg?'active':''}" onclick="goPage(${i})">${i}</button>`;
+  if(hi<pages) html+=`${hi<pages-1?'<button disabled>…</button>':''}<button onclick="goPage(${pages})">${pages}</button>`;
+  html+=`<button onclick="goPage(${pg+1})" ${pg===pages?'disabled':''}>›</button>`;
+  cont.innerHTML=html;
+}
+
+// ── RENDER TABLE ─────────────────────────────────────────
+function render() {
+  const filtered = ordenar(filtrar());
+  stats(filtered);
+
+  const pp = parseInt(document.getElementById('perPage').value)||25;
+  renderPaginator(filtered.length, pp);
+  const page = pp>=999999 ? filtered : filtered.slice((pg-1)*pp, pg*pp);
+
+  document.getElementById('cntLabel').textContent = `${filtered.length} registro${filtered.length!==1?'s':''}`;
+
+  ['ordem','dataRecebimento','canalRecebido','numSeiSigrc','nome','cpf','reiteracao','atribuidoPara','respondidoEm'].forEach(f=>{
+    const el=document.getElementById('si-'+f);
+    if(el) el.textContent = sfld===f?(sdir==='asc'?' ▲':' ▼'):' ↕';
+  });
+
+  const tbody = document.getElementById('tbody');
+  if(page.length===0){
+    tbody.innerHTML=`<tr class="empty-row"><td colspan="10">${db.length===0?'Nenhum registro. Clique em «Novo Registro» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = page.map((r,i)=>{
+    const reit = r.reiteracao==='sim'
+      ? `<span class="badge b-sim" title="Data:${fd(r.reitData)} | Ofício:${r.reitOficio||'—'}">⚠ Sim</span>`
+      : `<span class="badge b-nao">Não</span>`;
+    const resp = r.respondidoEm
+      ? `<span class="badge b-resp">✓ ${fd(r.respondidoEm)}</span>`
+      : `<span class="badge b-pend">Pendente</span>`;
+    return `<tr class="${i%2?'even':''}">
+      <td><span class="num">${String(r.ordem).padStart(3,'0')}</span></td>
+      <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td>
+      <td>${badgeCanal(r.canalRecebido)}</td>
+      <td class="mono" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.numSeiSigrc||''}">${r.numSeiSigrc||'—'}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nome||''}">${r.nome||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${r.cpf||'—'}</td>
+      <td>${reit}</td>
+      <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.atribuidoPara||''}">${r.atribuidoPara||'—'}</td>
+      <td style="white-space:nowrap">${resp}</td>
+      <td class="no-print" style="white-space:nowrap">
+        <button class="btn btn-outline btn-sm" onclick="editar(${r.id})">Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="pedirDel(${r.id})">Excluir</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── MODAL ────────────────────────────────────────────────
+function abrirNovo(){
+  document.getElementById('mTitle').textContent='Novo Registro';
+  document.getElementById('bSalvar').textContent='Cadastrar';
+  document.getElementById('eId').value='';
+  ['fData','fSei','fRData','fROfc','fCpf','fAtrib','fResp'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('fNome').value='';
+  document.getElementById('fCanal2').value='MDS';
+  document.querySelector('input[name=reit][value=nao]').checked=true;
+  document.getElementById('rSub').classList.add('hidden');
+  document.getElementById('mOverlay').classList.remove('hidden');
+}
+function fecharModal(){ document.getElementById('mOverlay').classList.add('hidden'); }
+function toggleReit(){
+  const v=document.querySelector('input[name=reit]:checked').value;
+  document.getElementById('rSub').classList.toggle('hidden',v!=='sim');
+}
+function editar(id){
+  const r=db.find(x=>x.id===id); if(!r) return;
+  document.getElementById('mTitle').textContent='Editar Registro';
+  document.getElementById('bSalvar').textContent='Salvar Alterações';
+  document.getElementById('eId').value=id;
+  document.getElementById('fData').value=r.dataRecebimento||'';
+  document.getElementById('fCanal2').value=r.canalRecebido||'MDS';
+  document.getElementById('fSei').value=r.numSeiSigrc||'';
+  document.getElementById('fNome').value=r.nome||'';
+  document.getElementById('fCpf').value=r.cpf||'';
+  document.querySelector(`input[name=reit][value="${r.reiteracao||'nao'}"]`).checked=true;
+  document.getElementById('rSub').classList.toggle('hidden',r.reiteracao!=='sim');
+  document.getElementById('fRData').value=r.reitData||'';
+  document.getElementById('fROfc').value=r.reitOficio||'';
+  document.getElementById('fAtrib').value=r.atribuidoPara||'';
+  document.getElementById('fResp').value=r.respondidoEm||'';
+  document.getElementById('mOverlay').classList.remove('hidden');
+}
+async function salvar(){
+  const id=document.getElementById('eId').value;
+  const nome=document.getElementById('fNome').value.trim();
+  const data=document.getElementById('fData').value;
+  let ok=true;
+  ['fNome'].forEach(fid=>{ const el=document.getElementById(fid); el.classList.toggle('err',!el.value.trim()); if(!el.value.trim()) ok=false; });
+  if(!ok){ toast('⚠ Preencha os campos obrigatórios.'); return; }
+  const reit=document.querySelector('input[name=reit]:checked').value;
+  const reg={
+    dataRecebimento:data,
+    canalRecebido:document.getElementById('fCanal2').value,
+    numSeiSigrc:document.getElementById('fSei').value.trim(),
+    nome, cpf:document.getElementById('fCpf').value.trim(),
+    reiteracao:reit,
+    reitData:reit==='sim'?document.getElementById('fRData').value:'',
+    reitOficio:reit==='sim'?document.getElementById('fROfc').value.trim():'',
+    atribuidoPara:document.getElementById('fAtrib').value.trim(),
+    respondidoEm:document.getElementById('fResp').value,
+  };
+  try {
+    if(id){
+      reg.id = +id;
+      const atual = db.find(x=>x.id===+id);
+      reg.ordem = atual ? atual.ordem : nextOrd();
+      await db_ref.child(id).set(reg);
+      toast('✓ Registro atualizado.');
+    } else {
+      reg.id=nextId(); reg.ordem=nextOrd();
+      await db_ref.child(String(reg.id)).set(reg);
+      toast('✓ Registro cadastrado.');
+    }
+    fecharModal();
+    // render() é disparado automaticamente pelo listener 'value' do Firebase
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao salvar. Verifique sua conexão.');
+  }
+}
+
+// ── DELETE ───────────────────────────────────────────────
+function pedirDel(id){ delTarget=id; document.getElementById('cOverlay').classList.remove('hidden'); }
+function fecharConfirm(){ delTarget=null; document.getElementById('cOverlay').classList.add('hidden'); }
+async function confirmarDel(){
+  try {
+    await db_ref.child(String(delTarget)).remove();
+    fecharConfirm();
+    toast('Registro excluído.');
+    // render() é disparado automaticamente pelo listener 'value' do Firebase
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao excluir. Verifique sua conexão.');
+  }
+}
+
+// ── PRINT ────────────────────────────────────────────────
+function imprimir(){
+  const f=ordenar(filtrar());
+  document.getElementById('ph').innerHTML=`
+    <table style="width:100%;border:none;margin-bottom:8px"><tr>
+      <td style="border:none;padding:0"><div style="font-size:20px;font-weight:700;color:#1a4f8a">CONTROLE DE APURAÇÕES</div>
+        <div style="font-size:11px;color:#555;margin-top:2px">Gerado em: ${new Date().toLocaleString('pt-BR')} | Total exibido: ${f.length} registros</div></td>
+    </tr></table>`;
+  window.print();
+}
+
+// ── SEED DATA (usado apenas se o banco do Firebase estiver vazio) ──
+const SEED = [{"id":1,"ordem":1,"dataRecebimento":"2025-08-13","canalRecebido":"Outro","numSeiSigrc":"SEI: 6024202500175574","nome":"Maria Florinda Costa Vieira Lopes","cpf":"233.509.138-73","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-08-26"},{"id":2,"ordem":3,"dataRecebimento":"2025-08-13","canalRecebido":"Outro","numSeiSigrc":"SEI: 6024202500175574","nome":"Sr. Antonio Domingos da Silva","cpf":"237.860.318-51","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-08-28"},{"id":3,"ordem":4,"dataRecebimento":"2025-08-13","canalRecebido":"Outro","numSeiSigrc":"SEI: 6024202500175574","nome":"Sr. Leonel de Carvalho Garcia","cpf":"238.776.888-45","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-08-29"},{"id":4,"ordem":5,"dataRecebimento":"2025-07-29","canalRecebido":"Presencial","numSeiSigrc":"","nome":"Elenice Vilela Lima","cpf":"7413528851","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-08-30"},{"id":5,"ordem":6,"dataRecebimento":"2025-07-29","canalRecebido":"Ministério Público","numSeiSigrc":"SEI: 6024202500123078","nome":"Renata Cristina de Araujo Gonçalves","cpf":"165.511.906-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-08-22"},{"id":6,"ordem":8,"dataRecebimento":"2026-03-24","canalRecebido":"COMAS","numSeiSigrc":"SEI: 6024.2026/0004777-2","nome":"14 NOMES REFERIDOS NO OFICIO","cpf":"","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-01"},{"id":7,"ordem":8,"dataRecebimento":"2025-08-12","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500143842","nome":"Orlanda dos Santos Lins","cpf":"109.904.194-52","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-09-23"},{"id":8,"ordem":9,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Danielle da Silva Leite","cpf":"215.511.918-65","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta/Tatiana","respondidoEm":"2025-09-10"},{"id":9,"ordem":10,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Isamere Dias da Silva","cpf":"393.950.278-27","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta/Tatiana","respondidoEm":"2025-09-10"},{"id":10,"ordem":11,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Maruja Quispe Quispe","cpf":"1797843664","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta/Tatiana","respondidoEm":"2025-09-10"},{"id":11,"ordem":12,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Barbara de Souza Lopes","cpf":"237.909.971-76","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta/Tatiana","respondidoEm":"2025-09-10"},{"id":12,"ordem":13,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Joana da Graça Kebeye Kisombe","cpf":"901.825.598-07","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-09-10"},{"id":13,"ordem":14,"dataRecebimento":"2026-04-13","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0006905-9","nome":"ALEJANDRO MAXIMILIANO DE IBARLUCEA BECK","cpf":"236.801.598-11","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-06"},{"id":14,"ordem":14,"dataRecebimento":"2025-08-12","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500143281","nome":"Ana Carolina Veras do Nascimento","cpf":"456.117.008-98","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-08-25"},{"id":15,"ordem":15,"dataRecebimento":"2025-08-26","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500150172","nome":"Ana Claudia Alves da Silva Sarmento","cpf":"324.244.738-70","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-09-05"},{"id":16,"ordem":17,"dataRecebimento":"2025-09-08","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500157541","nome":"Thamires Flauzino da Silva Oliveira","cpf":"444.984.818-79","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-09-18"},{"id":17,"ordem":18,"dataRecebimento":"2025-09-08","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500150326","nome":"Wellen Cristina de Oliveira","cpf":"431.940.788-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-09-19"},{"id":18,"ordem":19,"dataRecebimento":"2025-10-09","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Shiro Okumura/Elisa Aiko Okumura","cpf":"08563749897/16209371825","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-09-29"},{"id":19,"ordem":20,"dataRecebimento":"2025-09-15","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500164637","nome":"Rosângela da Silva Tavares","cpf":"295.694.988-89","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-09-22"},{"id":20,"ordem":22,"dataRecebimento":"2025-09-16","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500150377","nome":"Gislaine do Prado Beraldo","cpf":"7842543623","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-02"},{"id":21,"ordem":23,"dataRecebimento":"2025-09-16","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500154542","nome":"Mariana Aparecida Alves","cpf":"377.247.808-54","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-11-14"},{"id":22,"ordem":24,"dataRecebimento":"2025-09-19","canalRecebido":"MDS","numSeiSigrc":"SEI:6024202500171242","nome":"Rosangela Carvalho Cavalcante","cpf":"284.192.368-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-26"},{"id":23,"ordem":25,"dataRecebimento":"2025-09-19","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500169434","nome":"Matheus Lima da Silva","cpf":"437.218.368-20","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-03"},{"id":24,"ordem":26,"dataRecebimento":"2025-09-11","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Jose Carlos dos Santos","cpf":"186.035.238-35","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-16"},{"id":25,"ordem":27,"dataRecebimento":"2025-09-11","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Ricardo de Araujo Pereira Dias","cpf":"407.782.528-84","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-17"},{"id":26,"ordem":28,"dataRecebimento":"2025-09-11","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Luiz Geraldo da Silva","cpf":"099.904.438-90","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-18"},{"id":27,"ordem":29,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"José Rodrigo da Silva","cpf":"279.300.288-79","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-21"},{"id":28,"ordem":30,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Railson Iago dos Santos Vieira","cpf":"099.199.315-27","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-21"},{"id":29,"ordem":31,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Esmeraldo Martins dos Anjos","cpf":"2965422889","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-24"},{"id":30,"ordem":32,"dataRecebimento":"2025-09-29","canalRecebido":"MDS","numSeiSigrc":"","nome":"Lucia Juvenal Feitoza","cpf":"350.043.298-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-03"},{"id":31,"ordem":33,"dataRecebimento":"2025-09-24","canalRecebido":"Monitoramento interno","numSeiSigrc":"SEI: 602420250016834","nome":"Akosua Patice Muller","cpf":"1179528930","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-07"},{"id":32,"ordem":34,"dataRecebimento":"2025-10-02","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"João Ricardo Patriota da Silva","cpf":"293.170.198-03","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-06"},{"id":33,"ordem":35,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175795","nome":"Cléia Aparecida Postigo Rodrigues","cpf":"113.978.778-04","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-27"},{"id":34,"ordem":36,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175639","nome":"André Manuel Saavedra Echegaray","cpf":"062.673.187-96","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-12"},{"id":35,"ordem":37,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175582","nome":"Iracema Vieira dos Santos de Sousa","cpf":"052.054.838-81","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-18"},{"id":36,"ordem":38,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175825","nome":"Moussa Gning","cpf":"703.242.012-57","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-25"},{"id":37,"ordem":39,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175728","nome":"Ozivalda Irene Alves","cpf":"337.338.908-92","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-19"},{"id":38,"ordem":40,"dataRecebimento":"2025-09-25","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175167","nome":"Joyce Gomes de Araújo","cpf":"429.200.568-08","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-02"},{"id":39,"ordem":41,"dataRecebimento":"2025-09-25","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500176040","nome":"Caroline Alves da Silva","cpf":"395.093.738-26","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-05"},{"id":40,"ordem":42,"dataRecebimento":"2025-09-25","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500176015","nome":"Rafaela da Silva Dome","cpf":"420.751.248-92","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-15"},{"id":41,"ordem":43,"dataRecebimento":"2025-09-16","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500168969","nome":"Yéssica Soliz Parada","cpf":"237.867.938-67","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-15"},{"id":42,"ordem":44,"dataRecebimento":"2025-10-01","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500177364","nome":"Luiz Fernando Rodrigues Bonito","cpf":"403.635.368-33","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-18"},{"id":43,"ordem":45,"dataRecebimento":"","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500183054","nome":"Maria da Penha Reis da Silva","cpf":"148.066.064-72","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-22"},{"id":44,"ordem":46,"dataRecebimento":"","canalRecebido":"MDS","numSeiSigrc":"","nome":"Emmanuel Jean Pierre","cpf":"237.123.118-50","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-26"},{"id":45,"ordem":47,"dataRecebimento":"2025-10-20","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Iara Barbosa de Oliveira/Nelson de Freitas Mendonça Neto","cpf":"33148982827/44634326850","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-26"},{"id":46,"ordem":48,"dataRecebimento":"2025-09-10","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500186568","nome":"Gisele Priscila Neves Ribeiro","cpf":"326.791.208-33","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-26"},{"id":47,"ordem":49,"dataRecebimento":"2025-09-10","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500186525","nome":"Cassia Ferrari","cpf":"280.885.378-51","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":48,"ordem":50,"dataRecebimento":"2025-10-20","canalRecebido":"Outro","numSeiSigrc":"","nome":"Maria Aparecida Costa","cpf":"324.833.448-79","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-16"},{"id":49,"ordem":51,"dataRecebimento":"2025-11-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500186657","nome":"Jeniffer Talita da Silva Tavares","cpf":"419.599.168-40","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-26"},{"id":50,"ordem":52,"dataRecebimento":"2025-11-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500186606","nome":"Maria Claudia José de Araújo","cpf":"4652732465","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-02"},{"id":51,"ordem":53,"dataRecebimento":"2025-12-03","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Flavio Augusto Pereira dos Santos","cpf":"414.133.598-33","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-03"},{"id":52,"ordem":54,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021491-0","nome":"Paulo Henrique da Costa","cpf":"416.126.698-75","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-16"},{"id":53,"ordem":55,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021942-3","nome":"Amanda Helena de Assis Baptista","cpf":"363.947.198-97","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-16"},{"id":54,"ordem":55,"dataRecebimento":"2026-04-08","canalRecebido":"Ministério Público","numSeiSigrc":"SEI: 6024.2026/0006611-4","nome":"Gisele Priscila Neves Ribeiro","cpf":"326.791.208-33","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-05-05"},{"id":55,"ordem":56,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021937-7","nome":"Cássia Cristina Alves Landin","cpf":"280.602.258-47","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-02"},{"id":56,"ordem":57,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020932-0","nome":"Marcela Aparecida Costa Sampaio","cpf":"406.794.278-80","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-26"},{"id":57,"ordem":58,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021484-7","nome":"Mariana Pereira de Melo","cpf":"422.341.448-84","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-31"},{"id":58,"ordem":59,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021170-8","nome":"Lidiane de Lima Ribeiro Mota","cpf":"427.485.868-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-31"},{"id":59,"ordem":60,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021488-0","nome":"Patricia de Almeida Costa","cpf":"358.043.668-66","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-01"},{"id":60,"ordem":61,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021230-5","nome":"Dandara Lopes de Oliveira","cpf":"383.599.838-28","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-25"},{"id":61,"ordem":62,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021669-6","nome":"Leonardo Neves de Paula","cpf":"110.806.107-90","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-02"},{"id":62,"ordem":63,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021664-5","nome":"Aritson Mateus Martins Rodrigues","cpf":"6224804729","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-19"},{"id":63,"ordem":64,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021166-0","nome":"Thamires dos Santos Bomfim","cpf":"480.145.468-22","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-06"},{"id":64,"ordem":65,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021161-9","nome":"Marco Antônio Martins","cpf":"180.036.328-11","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-09"},{"id":65,"ordem":66,"dataRecebimento":"2025-11-04","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024","nome":"Rosana Aparecida Pereira Torres","cpf":"355.035.748-69","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-12"},{"id":66,"ordem":67,"dataRecebimento":"2025-12-11","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020461-2","nome":"Karina Moura da Silva","cpf":"386.778.018-80","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-13"},{"id":67,"ordem":68,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022190-8","nome":"Bruna Alves Coutinho","cpf":"471.358.708-75","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-07"},{"id":68,"ordem":69,"dataRecebimento":"2026-04-08","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0003857-9","nome":"ELIANA LUIZ DE AGUIAR","cpf":"305.453.151-15","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-08"},{"id":69,"ordem":69,"dataRecebimento":"2026-04-24","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0007650-0","nome":"JAQUELINE MICAEL BONOTI","cpf":"381.397.798-65","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-06-02"},{"id":70,"ordem":70,"dataRecebimento":"2026-04-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0006131-7","nome":"GABRIELA CRISTINA RAMOS BAGAGINI","cpf":"479.904.998-43","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-14"},{"id":71,"ordem":71,"dataRecebimento":"2026-01-23","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600014815","nome":"Manoela Gonçalves Alves","cpf":"1453842098","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-04"},{"id":72,"ordem":72,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020923-1","nome":"Bruna Batista da Silva","cpf":"356.289.568-21","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-23"},{"id":73,"ordem":73,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020928-2","nome":"Neci Conceição Silva/Domingos Pereira da Silva","cpf":"38674084320/17233617805","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-05"},{"id":74,"ordem":74,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022320-0","nome":"Cleide Coelho","cpf":"374.567.538-06","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-04-07"},{"id":75,"ordem":75,"dataRecebimento":"2025-01-16","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Maria Elcia Costa Nunes","cpf":"805.804.832-15","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":""},{"id":76,"ordem":76,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020892-8","nome":"Jucilaene Bezerra da Silva","cpf":"112.773.134-31","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-03-31"},{"id":77,"ordem":77,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Renato Tadeu Cominato","cpf":"4360795858","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-09-25"},{"id":78,"ordem":78,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Irene Ferreira Costa","cpf":"323.153.128-41","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":79,"ordem":79,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Vanessa Santiago de Souza","cpf":"323.439.328-16","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":80,"ordem":80,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Eliane Aparecida Dias de Almeida","cpf":"345.882.238-01","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":81,"ordem":81,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Eliane Nascimento Costa","cpf":"407.339.938-18","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":82,"ordem":82,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Raquel Araujo Neri","cpf":"433.879.668-57","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":83,"ordem":84,"dataRecebimento":"2025-10-07","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Maria Luci de Oliveira Belondi","cpf":"180.417.858-67","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":84,"ordem":87,"dataRecebimento":"2025-11-05","canalRecebido":"SIGRC","numSeiSigrc":"SIGRC: 35948089","nome":"Milene Aparecida Bernardo Felipe","cpf":"403.937.418-50","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":85,"ordem":88,"dataRecebimento":"2025-11-05","canalRecebido":"SIGRC","numSeiSigrc":"33422325","nome":"Vinicius Carriero dos Santos","cpf":"480.585.658-06","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-08"},{"id":86,"ordem":89,"dataRecebimento":"2025-11-05","canalRecebido":"SIGRC","numSeiSigrc":"35718811","nome":"Robson Antonio Ribeiro Garcia","cpf":"235.598.918-41","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-19"},{"id":87,"ordem":90,"dataRecebimento":"2025-11-07","canalRecebido":"SIGRC","numSeiSigrc":"SIGRC: 35099186","nome":"Francisca Elias dos Santos","cpf":"6038323422","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":88,"ordem":91,"dataRecebimento":"2025-11-07","canalRecebido":"SIGRC","numSeiSigrc":"35393936","nome":"Karina Silva Souza Santos","cpf":"119.800.845-80","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":89,"ordem":92,"dataRecebimento":"","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0008526-7","nome":"Makiesse Antonio Kiassungua","cpf":"234.226.978-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-19"},{"id":90,"ordem":93,"dataRecebimento":"2025-11-13","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Walkiria Laura Piacsek","cpf":"992.716.998-15","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-14"},{"id":91,"ordem":94,"dataRecebimento":"2025-11-24","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Maria Dayana Soares Sampaio","cpf":"8513933309","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-14"},{"id":92,"ordem":95,"dataRecebimento":"2025-11-27","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500169965","nome":"Jaqueline Cosme Pereira da Silva","cpf":"7524220731","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-10"},{"id":93,"ordem":96,"dataRecebimento":"2025-12-03","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Evani Galvão","cpf":"8661479851","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-11"},{"id":94,"ordem":97,"dataRecebimento":"2025-12-03","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Elke Ibraim Rocha","cpf":"315.092.698-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":95,"ordem":98,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021342-5","nome":"Ketleem Sanches de Castro","cpf":"425.945.608-39","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-10"},{"id":96,"ordem":102,"dataRecebimento":"2025-12-05","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Sara Macedo da Silva Souza","cpf":"410.387.678-65","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":97,"ordem":103,"dataRecebimento":"2025-12-08","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Kelly Cristina Demuner/Floriza Rita Mendonça","cpf":"06541663823/91405289872","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-12"},{"id":98,"ordem":104,"dataRecebimento":"2025-12-19","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Jamile Costa Silva","cpf":"8031957533","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-13"},{"id":99,"ordem":105,"dataRecebimento":"2025-12-19","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Lukose Manduka","cpf":"2420836847","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-28"},{"id":100,"ordem":106,"dataRecebimento":"2025-12-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Tais Maria de Oliveira","cpf":"423.232.968-41","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-14"},{"id":101,"ordem":107,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022558-0","nome":"Muhammad Irfan Amin","cpf":"6194562722","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-03-30"},{"id":102,"ordem":108,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022392-7","nome":"Michelli Alves da Silva","cpf":"379.186.398-39","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-04-02"},{"id":103,"ordem":109,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022848-1","nome":"Rafael Paulo da Cunha","cpf":"362.201.568-38","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-04-10"},{"id":104,"ordem":110,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020415-9","nome":"Matheus Cupertino Nogueira Alves","cpf":"501.481.018-79","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-23"},{"id":105,"ordem":111,"dataRecebimento":"2026-01-15","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Ricardo Eduardo Goes","cpf":"299.815.278-31","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":106,"ordem":112,"dataRecebimento":"2026-01-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Jossinete Oliveira Melo","cpf":"196.515.348-85","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":107,"ordem":113,"dataRecebimento":"2026-01-20","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Henrique Augusto dos Reis de Jesus","cpf":"444.987.828-01","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-26"},{"id":108,"ordem":114,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500168675","nome":"Wendy Freitas Soares","cpf":"399.516.518-44","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":""},{"id":109,"ordem":115,"dataRecebimento":"2026-01-26","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Edna Suzeth Gonçalves Nhanga Santana","cpf":"238.405.788-09","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":110,"ordem":116,"dataRecebimento":"2026-01-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Francine dos Santos Marques da Hora","cpf":"460.107.418-58","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":111,"ordem":117,"dataRecebimento":"2025-12-15","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Vitoria da Silva Soares","cpf":"522.990.888-22","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":112,"ordem":118,"dataRecebimento":"2026-01-14","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Rafaela Daiane de Brito","cpf":"482.759.818-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-17"},{"id":113,"ordem":119,"dataRecebimento":"2026-01-12","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Gladys Copajira Flores","cpf":"236.817.638-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-08"},{"id":114,"ordem":120,"dataRecebimento":"2025-12-18","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Zaira Silvia Anunciação da Silva","cpf":"237.390.388-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-28"},{"id":115,"ordem":122,"dataRecebimento":"2025-12-19","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Paulo Vinicius Santos Nascimento","cpf":"398.413.818-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":""},{"id":116,"ordem":123,"dataRecebimento":"2026-01-08","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Victor Guilherme Conrado Alves","cpf":"457.063.568-74","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":117,"ordem":124,"dataRecebimento":"2026-02-10","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Claudete Aparecida Triginelli","cpf":"329.978.118-99","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":118,"ordem":125,"dataRecebimento":"2026-01-29","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600019710","nome":"56 Diversos","cpf":"-","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-30"},{"id":119,"ordem":126,"dataRecebimento":"2026-02-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600024179","nome":"Aryane de Oliveira Andrade","cpf":"456.489.048-43","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-30"},{"id":120,"ordem":127,"dataRecebimento":"2026-01-29","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600021544","nome":"Vitoria Feitosa de Araujo","cpf":"446.400.538-19","reiteracao":"sim","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-03"},{"id":121,"ordem":128,"dataRecebimento":"2026-01-20","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600021480","nome":"Mauro Geovani Neto Batalha","cpf":"703.081.621-88","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-03"},{"id":122,"ordem":129,"dataRecebimento":"2026-02-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0002237-0","nome":"André Manuel Seixas Silva","cpf":"6177852793","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-02-18"},{"id":123,"ordem":132,"dataRecebimento":"2026-02-19","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"MAYARA GOMES BRITO","cpf":"424.963.238-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":124,"ordem":134,"dataRecebimento":"2026-03-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0000902-1","nome":"PAULO ROBERTO LUTFI","cpf":"325.656.448-84","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-02"},{"id":125,"ordem":135,"dataRecebimento":"2026-03-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0004010-7","nome":"LUCIANA MARTINS DOMINGOS","cpf":"176.927.128-75","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-06"},{"id":126,"ordem":136,"dataRecebimento":"2026-03-05","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"ANA CAROLINE PEREIRA DOS SANTOS","cpf":"445.978.478-55","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-26"},{"id":127,"ordem":138,"dataRecebimento":"2026-03-27","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600058847","nome":"ALEXANDRA MENDES DOS ANJOS","cpf":"346.786.688-37","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-03-31"},{"id":128,"ordem":139,"dataRecebimento":"2026-04-02","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"GUILJHERME RIBEIRO OLIVEIRA","cpf":"505.388.658-06","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-14"},{"id":129,"ordem":140,"dataRecebimento":"2026-04-02","canalRecebido":"MDS","numSeiSigrc":"","nome":"VANDA SUELI DE OLIVEIRA","cpf":"","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":""},{"id":130,"ordem":142,"dataRecebimento":"2026-02-03","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"ALEJANDRO MAXIMILIANO DE IBARLUCEA BECK","cpf":"236.801.598-11","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-06"},{"id":131,"ordem":143,"dataRecebimento":"2026-02-26","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"VANESSA DOS SANTOS SILVA","cpf":"374.625.378-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":""},{"id":132,"ordem":144,"dataRecebimento":"2026-03-17","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"CELISMAR MENDES DE SOUSA SILVA","cpf":"146.482.348-04","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":""},{"id":133,"ordem":145,"dataRecebimento":"2026-04-13","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0006896-6","nome":"JACQUELINE BARBOZA GOMES","cpf":"399.947.688-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-08"},{"id":134,"ordem":146,"dataRecebimento":"2026-04-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0006401-4","nome":"SOLANGE DE OLIVEIRA","cpf":"371.865.298-60","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-24"},{"id":135,"ordem":148,"dataRecebimento":"2026-03-26","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0005078-1","nome":"CAROLINA CARMELITA DE SOUSA","cpf":"482.379.768-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-24"},{"id":136,"ordem":149,"dataRecebimento":"2026-03-31","canalRecebido":"E-MAIL","numSeiSigrc":"","nome":"ABIAS OINCIANO DE ALMEIDA","cpf":"747570167","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-24"},{"id":137,"ordem":150,"dataRecebimento":"","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0007630-6","nome":"ELISABETE MADALENA JULIAO CAMBUNDO","cpf":"901.298.318-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-08"},{"id":138,"ordem":158,"dataRecebimento":"2025-08-12","canalRecebido":"MDS","numSeiSigrc":"SEI:6024202500223927","nome":"Michelli Alves da Silva","cpf":"379.186.398-39","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-02-04"},{"id":139,"ordem":159,"dataRecebimento":"2026-05-08","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0008457-0","nome":"Eva Agostinho Francisco","cpf":"993198708","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-05-21"},{"id":140,"ordem":160,"dataRecebimento":"2026-05-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600081164","nome":"Thais dos Santos Café Dias","cpf":"407.491.288-01","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-06-17"},{"id":141,"ordem":161,"dataRecebimento":"2026-05-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0008104-0","nome":"Alexander de Castro Almeida","cpf":"752.926.451-68","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-21"},{"id":142,"ordem":162,"dataRecebimento":"2026-06-02","canalRecebido":"MDS","numSeiSigrc":"6024202600098016","nome":"MAXIME DAVID ALEX TARNEAUD","cpf":"218.373.288-11","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-06-08"},{"id":143,"ordem":163,"dataRecebimento":"2025-12-19","canalRecebido":"SIGRC","numSeiSigrc":"","nome":"JOYCE GOMES DA SILVA COSTA","cpf":"231.105.808-88","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-10"},{"id":144,"ordem":164,"dataRecebimento":"2025-11-05","canalRecebido":"SIGRC","numSeiSigrc":"SIGRC 35883428","nome":"JAQUELINE DIAS RIBEIRO","cpf":"396.172.188-28","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":""},{"id":145,"ordem":165,"dataRecebimento":"2026-06-12","canalRecebido":"E-MAIL","numSeiSigrc":"","nome":"KAREN AKEMI UMENO","cpf":"441.495.218-24","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-17"},{"id":146,"ordem":166,"dataRecebimento":"2026-05-18","canalRecebido":"MDS","numSeiSigrc":"6024202600079828","nome":"Andressa Simões dos Santos","cpf":"537.396.188-41","reiteracao":"sim","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":""},{"id":147,"ordem":167,"dataRecebimento":"2025-11-26","canalRecebido":"SIGRC","numSeiSigrc":"34752666","nome":"KARINA LUNCA IGLEZIAS","cpf":"305.818.968-07","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":148,"ordem":168,"dataRecebimento":"2025-11-26","canalRecebido":"SIGRC","numSeiSigrc":"35539333","nome":"Lucicleide Cavalcante da Silva","cpf":"392.443.028-45","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"","respondidoEm":""},{"id":149,"ordem":169,"dataRecebimento":"2026-06-18","canalRecebido":"E-MAIL","numSeiSigrc":"","nome":"João Lins Maues","cpf":"016.797.941-83","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""}];
+
+// ── INIT ─────────────────────────────────────────────────
+document.getElementById('perPage').value = '25';
+document.querySelectorAll('input[name=reit]').forEach(r=>r.addEventListener('change',toggleReit));
+</script>
+</body>
+</html>
