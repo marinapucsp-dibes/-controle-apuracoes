@@ -436,7 +436,8 @@
     <div class="mb">
       <div class="imp-help" id="impHelp"></div>
       <div class="imp-sum" id="impSum"></div>
-      <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="atualizarBotaoImport()"> Importar também os possíveis duplicados</label>
+      <div class="imp-help" id="impReinc"></div>
+      <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="renderImport()"> Importar também os possíveis duplicados</label>
       <div class="imp-tw"><table>
         <thead><tr><th>Linha</th><th>Situação</th><th>Dt. Recebimento</th><th>Canal</th><th>N.º SEI/SIGRC</th><th>Nome</th><th>CPF</th><th>Reincidência</th><th>Atribuído Para</th><th>Respondido Em</th></tr></thead>
         <tbody id="impBody"></tbody>
@@ -765,9 +766,9 @@ async function confirmarDel(){
 }
 
 // ── IMPORTAÇÃO DE PLANILHA ───────────────────────────────
-// Lê um arquivo Excel/CSV, mostra uma prévia e só ACRESCENTA registros
-// (nunca altera nem apaga os que já existem no banco).
-let impLinhas = [];
+// Lê um arquivo Excel/CSV, mostra uma prévia e ACRESCENTA os registros novos.
+// Nos registros já existentes, só pode marcar Reincidência = Sim (nunca apaga nada).
+let impLinhas = [], impInfo = '', impPlano = null;
 
 const semAcento = s => String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'');
 const chaveCol  = s => semAcento(s).toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -905,65 +906,133 @@ function prepararImport(nomeArq, linhas){
     impLinhas.push({linha:i+2, reg, erros, avisos, dup});
   });
 
-  document.getElementById('impHelp').innerHTML =
+  impInfo =
     `Arquivo <b>${esc(nomeArq)}</b>. Colunas reconhecidas: ${reconhecidas.map(h=>`<code>${esc(h)}</code>`).join(' ')}`+
     (ignoradas.length ? `<br>Colunas ignoradas: ${ignoradas.map(h=>`<code>${esc(h)}</code>`).join(' ')}` : '')+
-    `<br>Nada é gravado até você clicar em <b>Importar</b>. Os registros atuais não são alterados — a importação só acrescenta novos casos.`;
+    `<br>Nada é gravado até você clicar em <b>Importar</b>. A importação acrescenta os novos casos; nos registros já cadastrados, ela só pode marcar <b>Reincidência = Sim</b> (nunca apaga nem altera outros campos).`;
+  const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
+  document.getElementById('impDupOpt').style.display = dup ? '' : 'none';
+  document.getElementById('impDup').checked = false;
+  renderImport();
+  document.getElementById('iOverlay').classList.remove('hidden');
+}
+
+// ── REINCIDÊNCIA AUTOMÁTICA ──────────────────────────────
+// A mesma pessoa é reconhecida pelo CPF quando os dois registros têm CPF;
+// se um deles não tiver CPF, pelo nome (sem diferenciar acentos/maiúsculas).
+// Em cada pessoa com mais de um caso, todos os casos depois do primeiro
+// (pela data de recebimento) ficam com Reincidência = Sim — inclusive o mais recente.
+const normNome = s => semAcento(s).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const soDig = s => String(s??'').replace(/\D/g,'');
+
+function calcReincidencias(novas){
+  const maxOrd = db.length ? Math.max(...db.map(r=>+r.ordem||0)) : 0;
+  const itens = [
+    ...db.map(r=>({r, existente:true, seq:+r.ordem||0})),
+    ...novas.map((l,i)=>({r:l.reg, linha:l, existente:false, seq:maxOrd+1+i})),
+  ];
+  const pai = itens.map((_,i)=>i);
+  const raiz = i => { while(pai[i]!==i){ pai[i]=pai[pai[i]]; i=pai[i]; } return i; };
+  const unir = (a,b) => { a=raiz(a); b=raiz(b); if(a!==b) pai[b]=a; };
+  const porCpf = {}, porNome = {};
+  itens.forEach((it,i)=>{
+    const c = soDig(it.r.cpf), n = normNome(it.r.nome);
+    if(c.length>=8) (porCpf[c] ||= []).push(i);
+    if(n) (porNome[n] ||= []).push(i);
+  });
+  Object.values(porCpf).forEach(g=>g.forEach(i=>unir(g[0],i)));
+  Object.values(porNome).forEach(g=>{
+    const semCpf = g.filter(i=>soDig(itens[i].r.cpf).length<8);
+    semCpf.forEach(i=>g.forEach(j=>unir(i,j)));
+  });
+  const grupos = {};
+  itens.forEach((it,i)=>(grupos[raiz(i)] ||= []).push(it));
+  const novasSim = new Map(), existentesSim = [];
+  Object.values(grupos).forEach(g=>{
+    if(g.length<2 || g.every(it=>it.existente)) return;   // só pessoas que aparecem na planilha
+    g.sort((a,b)=> (a.r.dataRecebimento||'').localeCompare(b.r.dataRecebimento||'') || a.seq-b.seq);
+    const primeiro = g[0];
+    const ref = primeiro.existente ? `do registro N.º ${String(primeiro.r.ordem).padStart(3,'0')}` : `da linha ${primeiro.linha.linha} da planilha`;
+    g.slice(1).forEach(it=>{
+      if(it.existente){ if(it.r.reincidencia!=='sim') existentesSim.push(it.r); }
+      else novasSim.set(it.linha, `reincidência: mesma pessoa ${ref}`);
+    });
+  });
+  return {novasSim, existentesSim};
+}
+
+function renderImport(){
+  const lst = linhasParaImportar();
+  const {novasSim, existentesSim} = calcReincidencias(lst);
+  impPlano = {lst, novasSim, existentesSim};
   const ok = impLinhas.filter(l=>!l.erros.length && !l.dup).length;
   const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
   const err = impLinhas.filter(l=>l.erros.length).length;
+  const nReinc = lst.filter(l=>l.reg.reincidencia==='sim' || novasSim.has(l)).length;
+  document.getElementById('impHelp').innerHTML = impInfo;
   document.getElementById('impSum').innerHTML =
     `<span class="badge b-resp">✓ ${ok} novo${ok!==1?'s':''}</span>`+
     `<span class="badge b-pend">⚠ ${dup} possíve${dup!==1?'is':'l'} duplicado${dup!==1?'s':''}</span>`+
-    `<span class="badge b-sim">✕ ${err} com erro (não ser${err!==1?'ão':'á'} importado${err!==1?'s':''})</span>`;
-  document.getElementById('impDupOpt').style.display = dup ? '' : 'none';
-  document.getElementById('impDup').checked = false;
+    `<span class="badge b-sim">✕ ${err} com erro (não ser${err!==1?'ão':'á'} importado${err!==1?'s':''})</span>`+
+    `<span class="badge b-mds">↻ ${nReinc} reincidência${nReinc!==1?'s':''} na planilha</span>`+
+    (existentesSim.length ? `<span class="badge b-mds">↻ ${existentesSim.length} registro${existentesSim.length!==1?'s':''} já cadastrado${existentesSim.length!==1?'s':''} passa${existentesSim.length!==1?'m':''} a Reincidência = Sim</span>` : '');
+  document.getElementById('impReinc').innerHTML = existentesSim.length
+    ? `<b>Registros já cadastrados que serão marcados com Reincidência = Sim</b> (são mais recentes que um caso da mesma pessoa na planilha):<br>`+
+      existentesSim.map(r=>`N.º ${String(r.ordem).padStart(3,'0')} — ${esc(r.nome)} (${fd(r.dataRecebimento)})`).join('<br>')
+    : '';
   document.getElementById('impBody').innerHTML = impLinhas.length ? impLinhas.map(l=>{
     const r = l.reg;
+    const vai = lst.includes(l);
     const sit = l.erros.length ? '<span class="badge b-sim">Erro</span>'
               : l.dup ? '<span class="badge b-pend">Duplicado?</span>'
               : '<span class="badge b-resp">Novo</span>';
-    const msg = [...l.erros, ...l.avisos].map(esc).join('<br>');
+    const msgs = [...l.erros, ...l.avisos];
+    if(vai && novasSim.has(l)) msgs.push(novasSim.get(l));
+    const reinc = vai && (r.reincidencia==='sim' || novasSim.has(l));
     return `<tr class="${l.erros.length?'r-err':l.dup?'r-dup':''}">
-      <td>${l.linha}</td><td>${sit}${msg?`<div class="imp-msg">${msg}</div>`:''}</td>
+      <td>${l.linha}</td><td>${sit}${msgs.length?`<div class="imp-msg">${msgs.map(esc).join('<br>')}</div>`:''}</td>
       <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td><td>${esc(r.canalRecebido)}</td>
       <td class="mono">${esc(r.numSeiSigrc)||'—'}</td><td>${esc(r.nome)||'—'}</td>
-      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td><td>${r.reincidencia==='sim'?'Sim':'Não'}</td><td>${esc(r.atribuidoPara)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
+      <td>${reinc?'<span class="badge b-sim">Sim</span>':(vai?'Não':'—')}</td><td>${esc(r.atribuidoPara)||'—'}</td>
       <td style="white-space:nowrap">${fd(r.respondidoEm)}</td></tr>`;
   }).join('') : '<tr class="empty-row"><td colspan="10">A planilha não tem linhas com dados.</td></tr>';
-  atualizarBotaoImport();
-  document.getElementById('iOverlay').classList.remove('hidden');
+  const n = lst.length;
+  const b = document.getElementById('impBtn');
+  b.textContent = n ? `Importar ${n} registro${n!==1?'s':''}` : 'Nada para importar';
+  b.disabled = !n;
 }
 
 function linhasParaImportar(){
   const comDup = document.getElementById('impDup').checked;
   return impLinhas.filter(l=>!l.erros.length && (comDup || !l.dup));
 }
-function atualizarBotaoImport(){
-  const n = linhasParaImportar().length;
-  const b = document.getElementById('impBtn');
-  b.textContent = n ? `Importar ${n} registro${n!==1?'s':''}` : 'Nada para importar';
-  b.disabled = !n;
-}
-function fecharImport(){ impLinhas = []; document.getElementById('iOverlay').classList.add('hidden'); }
+function fecharImport(){ impLinhas = []; impPlano = null; document.getElementById('iOverlay').classList.add('hidden'); }
 
 async function confirmarImport(){
-  const lst = linhasParaImportar();
-  if(!lst.length) return;
+  if(!impPlano || !impPlano.lst.length) return;
+  const {lst, novasSim, existentesSim} = impPlano;
   const b = document.getElementById('impBtn');
   b.disabled = true; b.textContent = 'Importando…';
   let id = nextId(), ordem = nextOrd();
-  const novos = {};
-  lst.forEach(l=>{ novos[String(id)] = {...l.reg, id, ordem}; id++; ordem++; });
+  const mudancas = {};
+  lst.forEach(l=>{
+    const reg = {...l.reg, id, ordem};
+    if(novasSim.has(l)) reg.reincidencia = 'sim';
+    mudancas[String(id)] = reg; id++; ordem++;
+  });
+  // Nos registros já cadastrados, só o campo reincidencia é alterado
+  existentesSim.forEach(r=>{ mudancas[`${r.id}/reincidencia`] = 'sim'; });
   try {
-    // update() grava todos de uma vez (ou nenhum, se falhar) sem tocar nos registros existentes
-    await db_ref.update(novos);
+    // update() grava tudo de uma vez (ou nada, se falhar)
+    await db_ref.update(mudancas);
     fecharImport();
-    toast(`✓ ${lst.length} registro${lst.length!==1?'s':''} importado${lst.length!==1?'s':''}.`, 4000);
+    toast(`✓ ${lst.length} registro${lst.length!==1?'s':''} importado${lst.length!==1?'s':''}`+
+      (existentesSim.length ? ` e ${existentesSim.length} marcado${existentesSim.length!==1?'s':''} como reincidência.` : '.'), 4500);
   } catch(e) {
     console.error(e);
-    toast('⚠ Erro ao importar. Nenhum registro foi gravado. Verifique sua conexão.', 4500);
-    atualizarBotaoImport();
+    toast('⚠ Erro ao importar. Nada foi gravado. Verifique sua conexão.', 4500);
+    renderImport();
   }
 }
 
