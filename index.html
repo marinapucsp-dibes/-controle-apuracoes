@@ -285,6 +285,7 @@
     <div class="sc resp" ><div class="sl">Respondidos</div>     <div class="sv" id="sResp">–</div></div>
     <div class="sc pend" ><div class="sl">Pendentes</div>       <div class="sv" id="sPend">–</div></div>
     <div class="sc reit" ><div class="sl">Reiterações</div>     <div class="sv" id="sReit">–</div></div>
+    <div class="sc reit" ><div class="sl">Reincidências</div>   <div class="sv" id="sReinc">–</div></div>
     <div class="sc total" style="border-left-color:#7c3aed"><div class="sl">Exibindo</div><div class="sv" id="sView" style="color:#7c3aed">–</div></div>
   </div>
 
@@ -307,6 +308,11 @@
       <option value="">Com/sem reiteração</option>
       <option value="sim">Com reiteração</option>
       <option value="nao">Sem reiteração</option>
+    </select>
+    <select id="fReinc" onchange="goPage(1)">
+      <option value="">Com/sem reincidência</option>
+      <option value="sim">Com reincidência</option>
+      <option value="nao">Sem reincidência</option>
     </select>
     <div class="tr">
       <span id="cntLabel" style="font-size:12px;color:var(--c4)"></span>
@@ -334,6 +340,7 @@
           <th onclick="sort('nome')">Nome<span id="si-nome"> ↕</span></th>
           <th onclick="sort('cpf')">CPF<span id="si-cpf"> ↕</span></th>
           <th onclick="sort('reiteracao')">Reiteração<span id="si-reiteracao"> ↕</span></th>
+          <th onclick="sort('reincidencia')">Reincidência<span id="si-reincidencia"> ↕</span></th>
           <th onclick="sort('atribuidoPara')">Atribuído Para<span id="si-atribuidoPara"> ↕</span></th>
           <th onclick="sort('respondidoEm')">Respondido Em<span id="si-respondidoEm"> ↕</span></th>
           <th class="no-print">Ações</th>
@@ -391,7 +398,10 @@
           <div class="fi"><label>N.º do Ofício</label><input type="text" id="fROfc" placeholder="N.º do ofício"></div>
         </div>
       </div>
-      <div class="fr c2">
+      <div class="fr c3">
+        <div class="fi"><label>Reincidência</label>
+          <select id="fReinc2"><option value="nao">Não</option><option value="sim">Sim</option></select>
+        </div>
         <div class="fi"><label>Atribuído Para</label><input type="text" id="fAtrib" placeholder="Responsável pela análise"></div>
         <div class="fi"><label>Respondido Em</label><input type="date" id="fResp"></div>
       </div>
@@ -428,7 +438,7 @@
       <div class="imp-sum" id="impSum"></div>
       <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="atualizarBotaoImport()"> Importar também os possíveis duplicados</label>
       <div class="imp-tw"><table>
-        <thead><tr><th>Linha</th><th>Situação</th><th>Dt. Recebimento</th><th>Canal</th><th>N.º SEI/SIGRC</th><th>Nome</th><th>CPF</th><th>Atribuído Para</th><th>Respondido Em</th></tr></thead>
+        <thead><tr><th>Linha</th><th>Situação</th><th>Dt. Recebimento</th><th>Canal</th><th>N.º SEI/SIGRC</th><th>Nome</th><th>CPF</th><th>Reincidência</th><th>Atribuído Para</th><th>Respondido Em</th></tr></thead>
         <tbody id="impBody"></tbody>
       </table></div>
     </div>
@@ -551,6 +561,7 @@ function filtrar() {
   const c = document.getElementById('fCanal').value;
   const s = document.getElementById('fStatus').value;
   const ri = document.getElementById('fReit').value;
+  const rc = document.getElementById('fReinc').value;
   return db.filter(r => {
     if(q && !`${r.nome} ${r.cpf} ${r.numSeiSigrc} ${r.atribuidoPara} ${r.ordem}`.toLowerCase().includes(q)) return false;
     if(c && !r.canalRecebido?.includes(c)) return false;
@@ -558,6 +569,8 @@ function filtrar() {
     if(s==='pendente'   &&  r.respondidoEm) return false;
     if(ri==='sim' && r.reiteracao!=='sim') return false;
     if(ri==='nao' && r.reiteracao==='sim') return false;
+    if(rc==='sim' && r.reincidencia!=='sim') return false;
+    if(rc==='nao' && r.reincidencia==='sim') return false;
     return true;
   });
 }
@@ -581,6 +594,7 @@ function stats(filtered) {
   document.getElementById('sResp').textContent  = db.filter(x=>x.respondidoEm).length;
   document.getElementById('sPend').textContent  = db.filter(x=>!x.respondidoEm).length;
   document.getElementById('sReit').textContent  = db.filter(x=>x.reiteracao==='sim').length;
+  document.getElementById('sReinc').textContent = db.filter(x=>x.reincidencia==='sim').length;
   document.getElementById('sView').textContent  = filtered.length;
 }
 
@@ -617,19 +631,22 @@ function render() {
 
   document.getElementById('cntLabel').textContent = `${filtered.length} registro${filtered.length!==1?'s':''}`;
 
-  ['ordem','dataRecebimento','canalRecebido','numSeiSigrc','nome','cpf','reiteracao','atribuidoPara','respondidoEm'].forEach(f=>{
+  ['ordem','dataRecebimento','canalRecebido','numSeiSigrc','nome','cpf','reiteracao','reincidencia','atribuidoPara','respondidoEm'].forEach(f=>{
     const el=document.getElementById('si-'+f);
     if(el) el.textContent = sfld===f?(sdir==='asc'?' ▲':' ▼'):' ↕';
   });
 
   const tbody = document.getElementById('tbody');
   if(page.length===0){
-    tbody.innerHTML=`<tr class="empty-row"><td colspan="10">${db.length===0?'Nenhum registro. Clique em «Novo Registro» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
+    tbody.innerHTML=`<tr class="empty-row"><td colspan="11">${db.length===0?'Nenhum registro. Clique em «Novo Registro» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
     return;
   }
   tbody.innerHTML = page.map((r,i)=>{
     const reit = r.reiteracao==='sim'
       ? `<span class="badge b-sim" title="Data:${fd(r.reitData)} | Ofício:${r.reitOficio||'—'}">⚠ Sim</span>`
+      : `<span class="badge b-nao">Não</span>`;
+    const reinc = r.reincidencia==='sim'
+      ? `<span class="badge b-sim">Sim</span>`
       : `<span class="badge b-nao">Não</span>`;
     const resp = r.respondidoEm
       ? `<span class="badge b-resp">✓ ${fd(r.respondidoEm)}</span>`
@@ -642,6 +659,7 @@ function render() {
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nome||''}">${r.nome||'—'}</td>
       <td class="mono" style="white-space:nowrap">${r.cpf||'—'}</td>
       <td>${reit}</td>
+      <td>${reinc}</td>
       <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.atribuidoPara||''}">${r.atribuidoPara||'—'}</td>
       <td style="white-space:nowrap">${resp}</td>
       <td class="no-print" style="white-space:nowrap">
@@ -660,6 +678,7 @@ function abrirNovo(){
   ['fData','fSei','fRData','fROfc','fCpf','fAtrib','fResp'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('fNome').value='';
   document.getElementById('fCanal2').value='MDS';
+  document.getElementById('fReinc2').value='nao';
   document.querySelector('input[name=reit][value=nao]').checked=true;
   document.getElementById('rSub').classList.add('hidden');
   document.getElementById('mOverlay').classList.remove('hidden');
@@ -685,6 +704,7 @@ function editar(id){
   document.getElementById('rSub').classList.toggle('hidden',r.reiteracao!=='sim');
   document.getElementById('fRData').value=r.reitData||'';
   document.getElementById('fROfc').value=r.reitOficio||'';
+  document.getElementById('fReinc2').value=r.reincidencia==='sim'?'sim':'nao';
   document.getElementById('fAtrib').value=r.atribuidoPara||'';
   document.getElementById('fResp').value=r.respondidoEm||'';
   document.getElementById('mOverlay').classList.remove('hidden');
@@ -703,6 +723,7 @@ async function salvar(){
     numSeiSigrc:document.getElementById('fSei').value.trim(),
     nome, cpf:document.getElementById('fCpf').value.trim(),
     reiteracao:reit,
+    reincidencia:document.getElementById('fReinc2').value,
     reitData:reit==='sim'?document.getElementById('fRData').value:'',
     reitOficio:reit==='sim'?document.getElementById('fROfc').value.trim():'',
     atribuidoPara:document.getElementById('fAtrib').value.trim(),
@@ -760,6 +781,7 @@ const IMP_COLUNAS = {
   cpf:'cpf',
   datarecebimento:'dataRecebimento', dtrecebimento:'dataRecebimento',
   dataresposta:'respondidoEm', respondidoem:'respondidoEm',
+  reincidencia:'reincidencia', reincidente:'reincidencia', reinscidencia:'reincidencia', reicidencia:'reincidencia',
   tecnicor:'atribuidoPara', tecnico:'atribuidoPara', tecnica:'atribuidoPara', atribuidopara:'atribuidoPara', responsavel:'atribuidoPara',
 };
 const IMP_CANAIS = ['SEI','SIGRC','E-MAIL','MDS','Monitoramento interno','Presencial','Ministério Público','COMAS','Outro'];
@@ -769,6 +791,12 @@ function impCanal(v){
   if(!v) return 'Outro';
   const k = chaveCol(v);
   return IMP_CANAIS.find(c=>chaveCol(c)===k) || v;
+}
+function impSimNao(v){
+  const k = chaveCol(v);
+  if(!k || ['nao','n','0','false','no'].includes(k)) return {v:'nao'};
+  if(['sim','s','x','1','true','yes'].includes(k)) return {v:'sim'};
+  return {v:'nao', erro:`valor não reconhecido: "${v}" (use Sim ou Não)`};
 }
 function impCpf(v){
   const orig = String(v??'').trim();
@@ -853,6 +881,8 @@ function prepararImport(nomeArq, linhas){
     if(dRec.erro)  erros.push('Recebimento: '+dRec.erro);
     if(dResp.erro) erros.push('Resposta: '+dResp.erro);
     if(cpf.aviso)  avisos.push(cpf.aviso);
+    const reinc = impSimNao(bruto.reincidencia);
+    if(reinc.erro) erros.push('Reincidência: '+reinc.erro);
     const reg = {
       dataRecebimento: dRec.v,
       canalRecebido: impCanal(bruto.canalRecebido),
@@ -860,6 +890,7 @@ function prepararImport(nomeArq, linhas){
       nome: String(bruto.nome??'').trim(),
       cpf: cpf.v,
       reiteracao:'nao', reitData:'', reitOficio:'',
+      reincidencia: reinc.v,
       atribuidoPara: String(bruto.atribuidoPara??'').trim(),
       respondidoEm: dResp.v,
     };
@@ -897,9 +928,9 @@ function prepararImport(nomeArq, linhas){
       <td>${l.linha}</td><td>${sit}${msg?`<div class="imp-msg">${msg}</div>`:''}</td>
       <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td><td>${esc(r.canalRecebido)}</td>
       <td class="mono">${esc(r.numSeiSigrc)||'—'}</td><td>${esc(r.nome)||'—'}</td>
-      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td><td>${esc(r.atribuidoPara)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td><td>${r.reincidencia==='sim'?'Sim':'Não'}</td><td>${esc(r.atribuidoPara)||'—'}</td>
       <td style="white-space:nowrap">${fd(r.respondidoEm)}</td></tr>`;
-  }).join('') : '<tr class="empty-row"><td colspan="9">A planilha não tem linhas com dados.</td></tr>';
+  }).join('') : '<tr class="empty-row"><td colspan="10">A planilha não tem linhas com dados.</td></tr>';
   atualizarBotaoImport();
   document.getElementById('iOverlay').classList.remove('hidden');
 }
