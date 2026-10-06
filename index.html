@@ -9,6 +9,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
 
+<!-- SheetJS: leitura de planilhas Excel/CSV para a importação em lote -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -222,6 +225,22 @@
     .badge { padding:1px 5px; font-size:8.5px; }
   }
   .ph { display:none; }
+
+  /* IMPORTAÇÃO */
+  .modal.wide { max-width:1100px; }
+  .imp-help { font-size:12.5px; color:var(--c4); line-height:1.6; }
+  .imp-help code { background:var(--c2); padding:1px 5px; border-radius:4px; font-size:11.5px; color:var(--texto); }
+  .imp-sum { display:flex; gap:10px; flex-wrap:wrap; }
+  .imp-sum .badge { font-size:12px; padding:5px 10px; }
+  .imp-tw { max-height:52vh; overflow:auto; border:1px solid var(--borda); border-radius:8px; }
+  .imp-tw table { font-size:12px; }
+  .imp-tw thead th { position:sticky; top:0; background:var(--azul); cursor:default; }
+  .imp-tw tr.r-err  { background:var(--vermelho-bg); }
+  .imp-tw tr.r-dup  { background:var(--laranja-bg); }
+  .imp-msg { font-size:11px; color:var(--vermelho); }
+  .imp-tw tr.r-dup .imp-msg { color:var(--laranja); }
+  .imp-opt { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
+  .btn:disabled { opacity:.5; cursor:default; }
 </style>
 </head>
 <body>
@@ -266,6 +285,7 @@
     <div class="sc resp" ><div class="sl">Respondidos</div>     <div class="sv" id="sResp">–</div></div>
     <div class="sc pend" ><div class="sl">Pendentes</div>       <div class="sv" id="sPend">–</div></div>
     <div class="sc reit" ><div class="sl">Reiterações</div>     <div class="sv" id="sReit">–</div></div>
+    <div class="sc reit" ><div class="sl">Reincidências</div>   <div class="sv" id="sReinc">–</div></div>
     <div class="sc total" style="border-left-color:#7c3aed"><div class="sl">Exibindo</div><div class="sv" id="sView" style="color:#7c3aed">–</div></div>
   </div>
 
@@ -289,8 +309,18 @@
       <option value="sim">Com reiteração</option>
       <option value="nao">Sem reiteração</option>
     </select>
+    <select id="fReinc" onchange="goPage(1)">
+      <option value="">Com/sem reincidência</option>
+      <option value="sim">Com reincidência</option>
+      <option value="nao">Sem reincidência</option>
+    </select>
     <div class="tr">
       <span id="cntLabel" style="font-size:12px;color:var(--c4)"></span>
+      <input type="file" id="impFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="lerPlanilha(this)">
+      <button class="btn btn-outline" onclick="document.getElementById('impFile').click()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><path d="M12 3v12"/></svg>
+        Importar planilha
+      </button>
       <button class="btn btn-primary" onclick="abrirNovo()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Novo Registro
@@ -310,6 +340,7 @@
           <th onclick="sort('nome')">Nome<span id="si-nome"> ↕</span></th>
           <th onclick="sort('cpf')">CPF<span id="si-cpf"> ↕</span></th>
           <th onclick="sort('reiteracao')">Reiteração<span id="si-reiteracao"> ↕</span></th>
+          <th onclick="sort('reincidencia')">Reincidência<span id="si-reincidencia"> ↕</span></th>
           <th onclick="sort('atribuidoPara')">Atribuído Para<span id="si-atribuidoPara"> ↕</span></th>
           <th onclick="sort('respondidoEm')">Respondido Em<span id="si-respondidoEm"> ↕</span></th>
           <th class="no-print">Ações</th>
@@ -367,7 +398,10 @@
           <div class="fi"><label>N.º do Ofício</label><input type="text" id="fROfc" placeholder="N.º do ofício"></div>
         </div>
       </div>
-      <div class="fr c2">
+      <div class="fr c3">
+        <div class="fi"><label>Reincidência</label>
+          <select id="fReinc2"><option value="nao">Não</option><option value="sim">Sim</option></select>
+        </div>
         <div class="fi"><label>Atribuído Para</label><input type="text" id="fAtrib" placeholder="Responsável pela análise"></div>
         <div class="fi"><label>Respondido Em</label><input type="date" id="fResp"></div>
       </div>
@@ -395,6 +429,27 @@
   </div>
 </div>
 
+<!-- MODAL IMPORTAÇÃO -->
+<div class="overlay hidden" id="iOverlay">
+  <div class="modal wide">
+    <div class="mh"><h2>Importar planilha</h2><button class="mc" onclick="fecharImport()">×</button></div>
+    <div class="mb">
+      <div class="imp-help" id="impHelp"></div>
+      <div class="imp-sum" id="impSum"></div>
+      <div class="imp-help" id="impReinc"></div>
+      <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="renderImport()"> Importar também os possíveis duplicados</label>
+      <div class="imp-tw"><table>
+        <thead><tr><th>Linha</th><th>Situação</th><th>Dt. Recebimento</th><th>Canal</th><th>N.º SEI/SIGRC</th><th>Nome</th><th>CPF</th><th>Reincidência</th><th>Atribuído Para</th><th>Respondido Em</th></tr></thead>
+        <tbody id="impBody"></tbody>
+      </table></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="fecharImport()">Cancelar</button>
+      <button class="btn btn-primary" id="impBtn" onclick="confirmarImport()">Importar</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -415,23 +470,14 @@ firebase.initializeApp(firebaseConfig);
 const db_ref = firebase.database().ref('registros');
 
 // ── STATE ────────────────────────────────────────────────
-let db = [], sfld = 'ordem', sdir = 'asc', pg = 1, delTarget = null, primeiraCarga = true;
+let db = [], sfld = 'ordem', sdir = 'asc', pg = 1, delTarget = null;
 
 // ── FIREBASE: LISTENER EM TEMPO REAL ────────────────────
 // Qualquer pessoa que abrir o link vê os dados sempre atualizados,
 // e qualquer edição é refletida para todos automaticamente.
 db_ref.on('value', (snapshot) => {
   const val = snapshot.val();
-  if (val) {
-    db = Object.values(val);
-  } else if (primeiraCarga) {
-    // Banco vazio na primeira vez: popula com os dados iniciais (SEED)
-    popularSeed();
-    return; // popularSeed vai re-disparar este listener
-  } else {
-    db = [];
-  }
-  primeiraCarga = false;
+  db = val ? Object.values(val) : [];
   document.getElementById('loader').classList.add('hidden');
   setConn(true);
   render();
@@ -458,18 +504,6 @@ function setConn(online) {
     el.className = 'offline no-print';
     txt.textContent = 'Reconectando…';
     dot.classList.add('pulse');
-  }
-}
-
-async function popularSeed() {
-  const obj = {};
-  SEED.forEach(r => obj[r.id] = r);
-  try {
-    await db_ref.set(obj);
-    toast('✓ Base inicial carregada.');
-  } catch(e) {
-    console.error('Erro ao popular seed:', e);
-    toast('⚠ Erro ao carregar dados iniciais.');
   }
 }
 
@@ -507,6 +541,7 @@ function filtrar() {
   const c = document.getElementById('fCanal').value;
   const s = document.getElementById('fStatus').value;
   const ri = document.getElementById('fReit').value;
+  const rc = document.getElementById('fReinc').value;
   return db.filter(r => {
     if(q && !`${r.nome} ${r.cpf} ${r.numSeiSigrc} ${r.atribuidoPara} ${r.ordem}`.toLowerCase().includes(q)) return false;
     if(c && !r.canalRecebido?.includes(c)) return false;
@@ -514,6 +549,8 @@ function filtrar() {
     if(s==='pendente'   &&  r.respondidoEm) return false;
     if(ri==='sim' && r.reiteracao!=='sim') return false;
     if(ri==='nao' && r.reiteracao==='sim') return false;
+    if(rc==='sim' && r.reincidencia!=='sim') return false;
+    if(rc==='nao' && r.reincidencia==='sim') return false;
     return true;
   });
 }
@@ -537,6 +574,7 @@ function stats(filtered) {
   document.getElementById('sResp').textContent  = db.filter(x=>x.respondidoEm).length;
   document.getElementById('sPend').textContent  = db.filter(x=>!x.respondidoEm).length;
   document.getElementById('sReit').textContent  = db.filter(x=>x.reiteracao==='sim').length;
+  document.getElementById('sReinc').textContent = db.filter(x=>x.reincidencia==='sim').length;
   document.getElementById('sView').textContent  = filtered.length;
 }
 
@@ -573,19 +611,22 @@ function render() {
 
   document.getElementById('cntLabel').textContent = `${filtered.length} registro${filtered.length!==1?'s':''}`;
 
-  ['ordem','dataRecebimento','canalRecebido','numSeiSigrc','nome','cpf','reiteracao','atribuidoPara','respondidoEm'].forEach(f=>{
+  ['ordem','dataRecebimento','canalRecebido','numSeiSigrc','nome','cpf','reiteracao','reincidencia','atribuidoPara','respondidoEm'].forEach(f=>{
     const el=document.getElementById('si-'+f);
     if(el) el.textContent = sfld===f?(sdir==='asc'?' ▲':' ▼'):' ↕';
   });
 
   const tbody = document.getElementById('tbody');
   if(page.length===0){
-    tbody.innerHTML=`<tr class="empty-row"><td colspan="10">${db.length===0?'Nenhum registro. Clique em «Novo Registro» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
+    tbody.innerHTML=`<tr class="empty-row"><td colspan="11">${db.length===0?'Nenhum registro. Clique em «Novo Registro» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
     return;
   }
   tbody.innerHTML = page.map((r,i)=>{
     const reit = r.reiteracao==='sim'
       ? `<span class="badge b-sim" title="Data:${fd(r.reitData)} | Ofício:${r.reitOficio||'—'}">⚠ Sim</span>`
+      : `<span class="badge b-nao">Não</span>`;
+    const reinc = r.reincidencia==='sim'
+      ? `<span class="badge b-sim">Sim</span>`
       : `<span class="badge b-nao">Não</span>`;
     const resp = r.respondidoEm
       ? `<span class="badge b-resp">✓ ${fd(r.respondidoEm)}</span>`
@@ -598,6 +639,7 @@ function render() {
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nome||''}">${r.nome||'—'}</td>
       <td class="mono" style="white-space:nowrap">${r.cpf||'—'}</td>
       <td>${reit}</td>
+      <td>${reinc}</td>
       <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.atribuidoPara||''}">${r.atribuidoPara||'—'}</td>
       <td style="white-space:nowrap">${resp}</td>
       <td class="no-print" style="white-space:nowrap">
@@ -616,6 +658,7 @@ function abrirNovo(){
   ['fData','fSei','fRData','fROfc','fCpf','fAtrib','fResp'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('fNome').value='';
   document.getElementById('fCanal2').value='MDS';
+  document.getElementById('fReinc2').value='nao';
   document.querySelector('input[name=reit][value=nao]').checked=true;
   document.getElementById('rSub').classList.add('hidden');
   document.getElementById('mOverlay').classList.remove('hidden');
@@ -631,7 +674,9 @@ function editar(id){
   document.getElementById('bSalvar').textContent='Salvar Alterações';
   document.getElementById('eId').value=id;
   document.getElementById('fData').value=r.dataRecebimento||'';
-  document.getElementById('fCanal2').value=r.canalRecebido||'MDS';
+  const selCanal=document.getElementById('fCanal2');
+  if(r.canalRecebido && ![...selCanal.options].some(o=>o.value===r.canalRecebido)) selCanal.add(new Option(r.canalRecebido));
+  selCanal.value=r.canalRecebido||'MDS';
   document.getElementById('fSei').value=r.numSeiSigrc||'';
   document.getElementById('fNome').value=r.nome||'';
   document.getElementById('fCpf').value=r.cpf||'';
@@ -639,6 +684,7 @@ function editar(id){
   document.getElementById('rSub').classList.toggle('hidden',r.reiteracao!=='sim');
   document.getElementById('fRData').value=r.reitData||'';
   document.getElementById('fROfc').value=r.reitOficio||'';
+  document.getElementById('fReinc2').value=r.reincidencia==='sim'?'sim':'nao';
   document.getElementById('fAtrib').value=r.atribuidoPara||'';
   document.getElementById('fResp').value=r.respondidoEm||'';
   document.getElementById('mOverlay').classList.remove('hidden');
@@ -657,6 +703,7 @@ async function salvar(){
     numSeiSigrc:document.getElementById('fSei').value.trim(),
     nome, cpf:document.getElementById('fCpf').value.trim(),
     reiteracao:reit,
+    reincidencia:document.getElementById('fReinc2').value,
     reitData:reit==='sim'?document.getElementById('fRData').value:'',
     reitOficio:reit==='sim'?document.getElementById('fROfc').value.trim():'',
     atribuidoPara:document.getElementById('fAtrib').value.trim(),
@@ -697,6 +744,277 @@ async function confirmarDel(){
   }
 }
 
+// ── IMPORTAÇÃO DE PLANILHA ───────────────────────────────
+// Lê um arquivo Excel/CSV, mostra uma prévia e ACRESCENTA os registros novos.
+// Nos registros já existentes, só pode marcar Reincidência = Sim (nunca apaga nada).
+let impLinhas = [], impInfo = '', impPlano = null;
+
+const semAcento = s => String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+const chaveCol  = s => semAcento(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Nome da coluna na planilha (sem acentos, espaços e símbolos) → campo do sistema
+const IMP_COLUNAS = {
+  canal:'canalRecebido', canalrecebido:'canalRecebido',
+  sigrcsei:'numSeiSigrc', seisigrc:'numSeiSigrc', sei:'numSeiSigrc', sigrc:'numSeiSigrc', nseisigrc:'numSeiSigrc',
+  nome:'nome',
+  cpf:'cpf',
+  datarecebimento:'dataRecebimento', dtrecebimento:'dataRecebimento',
+  dataresposta:'respondidoEm', respondidoem:'respondidoEm',
+  reincidencia:'reincidencia', reincidente:'reincidencia', reinscidencia:'reincidencia', reicidencia:'reincidencia',
+  tecnicor:'atribuidoPara', tecnico:'atribuidoPara', tecnica:'atribuidoPara', atribuidopara:'atribuidoPara', responsavel:'atribuidoPara',
+};
+const IMP_CANAIS = ['SEI','SIGRC','E-MAIL','MDS','Monitoramento interno','Presencial','Ministério Público','COMAS','Outro'];
+
+function impCanal(v){
+  v = String(v??'').trim();
+  if(!v) return 'Outro';
+  const k = chaveCol(v);
+  return IMP_CANAIS.find(c=>chaveCol(c)===k) || v;
+}
+function impSimNao(v){
+  const k = chaveCol(v);
+  if(!k || ['nao','n','0','false','no'].includes(k)) return {v:'nao'};
+  if(['sim','s','x','1','true','yes'].includes(k)) return {v:'sim'};
+  return {v:'nao', erro:`valor não reconhecido: "${v}" (use Sim ou Não)`};
+}
+function impCpf(v){
+  const orig = String(v??'').trim();
+  if(!orig) return {v:''};
+  let d = orig.replace(/\D/g,'');
+  // O Excel costuma apagar os zeros à esquerda do CPF quando a célula é numérica
+  if(d.length>=8 && d.length<11) d = d.padStart(11,'0');
+  if(d.length!==11) return {v:orig, aviso:'CPF com quantidade de dígitos diferente de 11'};
+  return {v:d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')};
+}
+function impData(v){
+  if(v===null || v===undefined || String(v).trim()==='') return {v:''};
+  let y,m,d;
+  if(typeof v==='number'){                       // data numérica do Excel
+    const p = XLSX.SSF.parse_date_code(v);
+    if(p){ y=p.y; m=p.m; d=p.d; }
+  } else {
+    const s = String(v).trim();
+    let r;
+    if((r = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))){ d=+r[1]; m=+r[2]; y=+r[3]; if(y<100) y+=2000; }
+    else if((r = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))){ y=+r[1]; m=+r[2]; d=+r[3]; }
+  }
+  const dt = y ? new Date(y, m-1, d) : null;
+  if(!dt || dt.getFullYear()!==y || dt.getMonth()!==m-1 || dt.getDate()!==d || y<1990 || y>2100)
+    return {v:'', erro:`data inválida: "${v}"`};
+  return {v:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
+}
+// Mesmo CPF (ou mesmo nome, se não houver CPF) + mesmo número SEI/SIGRC = possível duplicado
+function chaveDup(r){
+  const quem = r.cpf ? r.cpf.replace(/\D/g,'') : chaveCol(r.nome);
+  return quem ? `${quem}|${chaveCol(r.numSeiSigrc)}` : '';
+}
+
+function lerPlanilha(input){
+  const file = input.files[0];
+  input.value = '';                               // permite escolher o mesmo arquivo de novo
+  if(!file) return;
+  if(typeof XLSX==='undefined'){ toast('⚠ Não foi possível carregar o leitor de planilhas. Verifique a internet.'); return; }
+  const csv = /\.csv$/i.test(file.name);
+  const fr = new FileReader();
+  fr.onload = e => {
+    try {
+      let wb;
+      if(csv){
+        // CSV salvo pelo Excel costuma vir em Windows-1252; se não for UTF-8 válido, usa essa codificação.
+        // É lido como texto puro (raw) para o leitor não trocar dia e mês das datas.
+        let txt;
+        try { txt = new TextDecoder('utf-8', {fatal:true}).decode(e.target.result); }
+        catch(_) { txt = new TextDecoder('windows-1252').decode(e.target.result); }
+        wb = XLSX.read(txt.replace(/^\uFEFF/,''), {type:'string', raw:true});
+      } else {
+        wb = XLSX.read(e.target.result, {type:'array'});
+      }
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const linhas = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+      prepararImport(file.name, linhas);
+    } catch(err) {
+      console.error(err);
+      toast('⚠ Não foi possível ler o arquivo. Use .xlsx, .xls ou .csv.');
+    }
+  };
+  fr.readAsArrayBuffer(file);
+}
+
+function prepararImport(nomeArq, linhas){
+  const cab = (linhas[0]||[]).map(h=>IMP_COLUNAS[chaveCol(h)]||null);
+  const reconhecidas = (linhas[0]||[]).filter((h,i)=>cab[i]).map(h=>String(h).trim());
+  const ignoradas = (linhas[0]||[]).filter((h,i)=>!cab[i] && String(h).trim()).map(h=>String(h).trim());
+  if(!cab.includes('nome')){
+    toast('⚠ A planilha precisa ter uma coluna "nome" na primeira linha.', 4500);
+    return;
+  }
+  const existentes = new Set(db.map(chaveDup).filter(Boolean));
+  const noArquivo = new Set();
+  impLinhas = [];
+  linhas.slice(1).forEach((lin, i)=>{
+    if(!lin.some(c=>String(c).trim()!=='')) return;   // linha em branco
+    const bruto = {};
+    cab.forEach((campo, j)=>{ if(campo && bruto[campo]===undefined) bruto[campo] = lin[j]; });
+    const erros = [], avisos = [];
+    const dRec = impData(bruto.dataRecebimento), dResp = impData(bruto.respondidoEm), cpf = impCpf(bruto.cpf);
+    if(dRec.erro)  erros.push('Recebimento: '+dRec.erro);
+    if(dResp.erro) erros.push('Resposta: '+dResp.erro);
+    if(cpf.aviso)  avisos.push(cpf.aviso);
+    const reinc = impSimNao(bruto.reincidencia);
+    if(reinc.erro) erros.push('Reincidência: '+reinc.erro);
+    const reg = {
+      dataRecebimento: dRec.v,
+      canalRecebido: impCanal(bruto.canalRecebido),
+      numSeiSigrc: String(bruto.numSeiSigrc??'').trim(),
+      nome: String(bruto.nome??'').trim(),
+      cpf: cpf.v,
+      reiteracao:'nao', reitData:'', reitOficio:'',
+      reincidencia: reinc.v,
+      atribuidoPara: String(bruto.atribuidoPara??'').trim(),
+      respondidoEm: dResp.v,
+    };
+    if(!reg.nome) erros.push('nome em branco');
+    let dup = false;
+    const k = chaveDup(reg);
+    if(!erros.length && k){
+      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesmo CPF/nome e SEI)'); }
+      else if(noArquivo.has(k)){ dup = true; avisos.push('repetido nesta planilha'); }
+      noArquivo.add(k);
+    }
+    impLinhas.push({linha:i+2, reg, erros, avisos, dup});
+  });
+
+  impInfo =
+    `Arquivo <b>${esc(nomeArq)}</b>. Colunas reconhecidas: ${reconhecidas.map(h=>`<code>${esc(h)}</code>`).join(' ')}`+
+    (ignoradas.length ? `<br>Colunas ignoradas: ${ignoradas.map(h=>`<code>${esc(h)}</code>`).join(' ')}` : '')+
+    `<br>Nada é gravado até você clicar em <b>Importar</b>. A importação acrescenta os novos casos; nos registros já cadastrados, ela só pode marcar <b>Reincidência = Sim</b> (nunca apaga nem altera outros campos).`;
+  const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
+  document.getElementById('impDupOpt').style.display = dup ? '' : 'none';
+  document.getElementById('impDup').checked = false;
+  renderImport();
+  document.getElementById('iOverlay').classList.remove('hidden');
+}
+
+// ── REINCIDÊNCIA AUTOMÁTICA ──────────────────────────────
+// A mesma pessoa é reconhecida pelo CPF quando os dois registros têm CPF;
+// se um deles não tiver CPF, pelo nome (sem diferenciar acentos/maiúsculas).
+// Em cada pessoa com mais de um caso, todos os casos depois do primeiro
+// (pela data de recebimento) ficam com Reincidência = Sim — inclusive o mais recente.
+const normNome = s => semAcento(s).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const soDig = s => String(s??'').replace(/\D/g,'');
+
+function calcReincidencias(novas){
+  const maxOrd = db.length ? Math.max(...db.map(r=>+r.ordem||0)) : 0;
+  const itens = [
+    ...db.map(r=>({r, existente:true, seq:+r.ordem||0})),
+    ...novas.map((l,i)=>({r:l.reg, linha:l, existente:false, seq:maxOrd+1+i})),
+  ];
+  const pai = itens.map((_,i)=>i);
+  const raiz = i => { while(pai[i]!==i){ pai[i]=pai[pai[i]]; i=pai[i]; } return i; };
+  const unir = (a,b) => { a=raiz(a); b=raiz(b); if(a!==b) pai[b]=a; };
+  const porCpf = {}, porNome = {};
+  itens.forEach((it,i)=>{
+    const c = soDig(it.r.cpf), n = normNome(it.r.nome);
+    if(c.length>=8) (porCpf[c] ||= []).push(i);
+    if(n) (porNome[n] ||= []).push(i);
+  });
+  Object.values(porCpf).forEach(g=>g.forEach(i=>unir(g[0],i)));
+  Object.values(porNome).forEach(g=>{
+    const semCpf = g.filter(i=>soDig(itens[i].r.cpf).length<8);
+    semCpf.forEach(i=>g.forEach(j=>unir(i,j)));
+  });
+  const grupos = {};
+  itens.forEach((it,i)=>(grupos[raiz(i)] ||= []).push(it));
+  const novasSim = new Map(), existentesSim = [];
+  Object.values(grupos).forEach(g=>{
+    if(g.length<2 || g.every(it=>it.existente)) return;   // só pessoas que aparecem na planilha
+    g.sort((a,b)=> (a.r.dataRecebimento||'').localeCompare(b.r.dataRecebimento||'') || a.seq-b.seq);
+    const primeiro = g[0];
+    const ref = primeiro.existente ? `do registro N.º ${String(primeiro.r.ordem).padStart(3,'0')}` : `da linha ${primeiro.linha.linha} da planilha`;
+    g.slice(1).forEach(it=>{
+      if(it.existente){ if(it.r.reincidencia!=='sim') existentesSim.push(it.r); }
+      else novasSim.set(it.linha, `reincidência: mesma pessoa ${ref}`);
+    });
+  });
+  return {novasSim, existentesSim};
+}
+
+function renderImport(){
+  const lst = linhasParaImportar();
+  const {novasSim, existentesSim} = calcReincidencias(lst);
+  impPlano = {lst, novasSim, existentesSim};
+  const ok = impLinhas.filter(l=>!l.erros.length && !l.dup).length;
+  const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
+  const err = impLinhas.filter(l=>l.erros.length).length;
+  const nReinc = lst.filter(l=>l.reg.reincidencia==='sim' || novasSim.has(l)).length;
+  document.getElementById('impHelp').innerHTML = impInfo;
+  document.getElementById('impSum').innerHTML =
+    `<span class="badge b-resp">✓ ${ok} novo${ok!==1?'s':''}</span>`+
+    `<span class="badge b-pend">⚠ ${dup} possíve${dup!==1?'is':'l'} duplicado${dup!==1?'s':''}</span>`+
+    `<span class="badge b-sim">✕ ${err} com erro (não ser${err!==1?'ão':'á'} importado${err!==1?'s':''})</span>`+
+    `<span class="badge b-mds">↻ ${nReinc} reincidência${nReinc!==1?'s':''} na planilha</span>`+
+    (existentesSim.length ? `<span class="badge b-mds">↻ ${existentesSim.length} registro${existentesSim.length!==1?'s':''} já cadastrado${existentesSim.length!==1?'s':''} passa${existentesSim.length!==1?'m':''} a Reincidência = Sim</span>` : '');
+  document.getElementById('impReinc').innerHTML = existentesSim.length
+    ? `<b>Registros já cadastrados que serão marcados com Reincidência = Sim</b> (são mais recentes que um caso da mesma pessoa na planilha):<br>`+
+      existentesSim.map(r=>`N.º ${String(r.ordem).padStart(3,'0')} — ${esc(r.nome)} (${fd(r.dataRecebimento)})`).join('<br>')
+    : '';
+  document.getElementById('impBody').innerHTML = impLinhas.length ? impLinhas.map(l=>{
+    const r = l.reg;
+    const vai = lst.includes(l);
+    const sit = l.erros.length ? '<span class="badge b-sim">Erro</span>'
+              : l.dup ? '<span class="badge b-pend">Duplicado?</span>'
+              : '<span class="badge b-resp">Novo</span>';
+    const msgs = [...l.erros, ...l.avisos];
+    if(vai && novasSim.has(l)) msgs.push(novasSim.get(l));
+    const reinc = vai && (r.reincidencia==='sim' || novasSim.has(l));
+    return `<tr class="${l.erros.length?'r-err':l.dup?'r-dup':''}">
+      <td>${l.linha}</td><td>${sit}${msgs.length?`<div class="imp-msg">${msgs.map(esc).join('<br>')}</div>`:''}</td>
+      <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td><td>${esc(r.canalRecebido)}</td>
+      <td class="mono">${esc(r.numSeiSigrc)||'—'}</td><td>${esc(r.nome)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
+      <td>${reinc?'<span class="badge b-sim">Sim</span>':(vai?'Não':'—')}</td><td>${esc(r.atribuidoPara)||'—'}</td>
+      <td style="white-space:nowrap">${fd(r.respondidoEm)}</td></tr>`;
+  }).join('') : '<tr class="empty-row"><td colspan="10">A planilha não tem linhas com dados.</td></tr>';
+  const n = lst.length;
+  const b = document.getElementById('impBtn');
+  b.textContent = n ? `Importar ${n} registro${n!==1?'s':''}` : 'Nada para importar';
+  b.disabled = !n;
+}
+
+function linhasParaImportar(){
+  const comDup = document.getElementById('impDup').checked;
+  return impLinhas.filter(l=>!l.erros.length && (comDup || !l.dup));
+}
+function fecharImport(){ impLinhas = []; impPlano = null; document.getElementById('iOverlay').classList.add('hidden'); }
+
+async function confirmarImport(){
+  if(!impPlano || !impPlano.lst.length) return;
+  const {lst, novasSim, existentesSim} = impPlano;
+  const b = document.getElementById('impBtn');
+  b.disabled = true; b.textContent = 'Importando…';
+  let id = nextId(), ordem = nextOrd();
+  const mudancas = {};
+  lst.forEach(l=>{
+    const reg = {...l.reg, id, ordem};
+    if(novasSim.has(l)) reg.reincidencia = 'sim';
+    mudancas[String(id)] = reg; id++; ordem++;
+  });
+  // Nos registros já cadastrados, só o campo reincidencia é alterado
+  existentesSim.forEach(r=>{ mudancas[`${r.id}/reincidencia`] = 'sim'; });
+  try {
+    // update() grava tudo de uma vez (ou nada, se falhar)
+    await db_ref.update(mudancas);
+    fecharImport();
+    toast(`✓ ${lst.length} registro${lst.length!==1?'s':''} importado${lst.length!==1?'s':''}`+
+      (existentesSim.length ? ` e ${existentesSim.length} marcado${existentesSim.length!==1?'s':''} como reincidência.` : '.'), 4500);
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao importar. Nada foi gravado. Verifique sua conexão.', 4500);
+    renderImport();
+  }
+}
+
 // ── PRINT ────────────────────────────────────────────────
 function imprimir(){
   const f=ordenar(filtrar());
@@ -707,9 +1025,6 @@ function imprimir(){
     </tr></table>`;
   window.print();
 }
-
-// ── SEED DATA (usado apenas se o banco do Firebase estiver vazio) ──
-const SEED = [{"id":1,"ordem":1,"dataRecebimento":"2025-08-13","canalRecebido":"Outro","numSeiSigrc":"SEI: 6024202500175574","nome":"Maria Florinda Costa Vieira Lopes","cpf":"233.509.138-73","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-08-26"},{"id":2,"ordem":3,"dataRecebimento":"2025-08-13","canalRecebido":"Outro","numSeiSigrc":"SEI: 6024202500175574","nome":"Sr. Antonio Domingos da Silva","cpf":"237.860.318-51","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-08-28"},{"id":3,"ordem":4,"dataRecebimento":"2025-08-13","canalRecebido":"Outro","numSeiSigrc":"SEI: 6024202500175574","nome":"Sr. Leonel de Carvalho Garcia","cpf":"238.776.888-45","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-08-29"},{"id":4,"ordem":5,"dataRecebimento":"2025-07-29","canalRecebido":"Presencial","numSeiSigrc":"","nome":"Elenice Vilela Lima","cpf":"7413528851","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-08-30"},{"id":5,"ordem":6,"dataRecebimento":"2025-07-29","canalRecebido":"Ministério Público","numSeiSigrc":"SEI: 6024202500123078","nome":"Renata Cristina de Araujo Gonçalves","cpf":"165.511.906-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-08-22"},{"id":6,"ordem":8,"dataRecebimento":"2026-03-24","canalRecebido":"COMAS","numSeiSigrc":"SEI: 6024.2026/0004777-2","nome":"14 NOMES REFERIDOS NO OFICIO","cpf":"","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-01"},{"id":7,"ordem":8,"dataRecebimento":"2025-08-12","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500143842","nome":"Orlanda dos Santos Lins","cpf":"109.904.194-52","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-09-23"},{"id":8,"ordem":9,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Danielle da Silva Leite","cpf":"215.511.918-65","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta/Tatiana","respondidoEm":"2025-09-10"},{"id":9,"ordem":10,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Isamere Dias da Silva","cpf":"393.950.278-27","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta/Tatiana","respondidoEm":"2025-09-10"},{"id":10,"ordem":11,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Maruja Quispe Quispe","cpf":"1797843664","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta/Tatiana","respondidoEm":"2025-09-10"},{"id":11,"ordem":12,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Barbara de Souza Lopes","cpf":"237.909.971-76","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta/Tatiana","respondidoEm":"2025-09-10"},{"id":12,"ordem":13,"dataRecebimento":"2025-06-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500099614","nome":"Joana da Graça Kebeye Kisombe","cpf":"901.825.598-07","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-09-10"},{"id":13,"ordem":14,"dataRecebimento":"2026-04-13","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0006905-9","nome":"ALEJANDRO MAXIMILIANO DE IBARLUCEA BECK","cpf":"236.801.598-11","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-06"},{"id":14,"ordem":14,"dataRecebimento":"2025-08-12","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500143281","nome":"Ana Carolina Veras do Nascimento","cpf":"456.117.008-98","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-08-25"},{"id":15,"ordem":15,"dataRecebimento":"2025-08-26","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500150172","nome":"Ana Claudia Alves da Silva Sarmento","cpf":"324.244.738-70","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-09-05"},{"id":16,"ordem":17,"dataRecebimento":"2025-09-08","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500157541","nome":"Thamires Flauzino da Silva Oliveira","cpf":"444.984.818-79","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-09-18"},{"id":17,"ordem":18,"dataRecebimento":"2025-09-08","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500150326","nome":"Wellen Cristina de Oliveira","cpf":"431.940.788-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-09-19"},{"id":18,"ordem":19,"dataRecebimento":"2025-10-09","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Shiro Okumura/Elisa Aiko Okumura","cpf":"08563749897/16209371825","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-09-29"},{"id":19,"ordem":20,"dataRecebimento":"2025-09-15","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500164637","nome":"Rosângela da Silva Tavares","cpf":"295.694.988-89","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-09-22"},{"id":20,"ordem":22,"dataRecebimento":"2025-09-16","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500150377","nome":"Gislaine do Prado Beraldo","cpf":"7842543623","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-02"},{"id":21,"ordem":23,"dataRecebimento":"2025-09-16","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500154542","nome":"Mariana Aparecida Alves","cpf":"377.247.808-54","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marta","respondidoEm":"2025-11-14"},{"id":22,"ordem":24,"dataRecebimento":"2025-09-19","canalRecebido":"MDS","numSeiSigrc":"SEI:6024202500171242","nome":"Rosangela Carvalho Cavalcante","cpf":"284.192.368-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-26"},{"id":23,"ordem":25,"dataRecebimento":"2025-09-19","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500169434","nome":"Matheus Lima da Silva","cpf":"437.218.368-20","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-03"},{"id":24,"ordem":26,"dataRecebimento":"2025-09-11","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Jose Carlos dos Santos","cpf":"186.035.238-35","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-16"},{"id":25,"ordem":27,"dataRecebimento":"2025-09-11","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Ricardo de Araujo Pereira Dias","cpf":"407.782.528-84","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-17"},{"id":26,"ordem":28,"dataRecebimento":"2025-09-11","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Luiz Geraldo da Silva","cpf":"099.904.438-90","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-18"},{"id":27,"ordem":29,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"José Rodrigo da Silva","cpf":"279.300.288-79","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-21"},{"id":28,"ordem":30,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Railson Iago dos Santos Vieira","cpf":"099.199.315-27","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-21"},{"id":29,"ordem":31,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Esmeraldo Martins dos Anjos","cpf":"2965422889","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-10-24"},{"id":30,"ordem":32,"dataRecebimento":"2025-09-29","canalRecebido":"MDS","numSeiSigrc":"","nome":"Lucia Juvenal Feitoza","cpf":"350.043.298-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-03"},{"id":31,"ordem":33,"dataRecebimento":"2025-09-24","canalRecebido":"Monitoramento interno","numSeiSigrc":"SEI: 602420250016834","nome":"Akosua Patice Muller","cpf":"1179528930","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-07"},{"id":32,"ordem":34,"dataRecebimento":"2025-10-02","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"João Ricardo Patriota da Silva","cpf":"293.170.198-03","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-06"},{"id":33,"ordem":35,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175795","nome":"Cléia Aparecida Postigo Rodrigues","cpf":"113.978.778-04","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-27"},{"id":34,"ordem":36,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175639","nome":"André Manuel Saavedra Echegaray","cpf":"062.673.187-96","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-12"},{"id":35,"ordem":37,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175582","nome":"Iracema Vieira dos Santos de Sousa","cpf":"052.054.838-81","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-18"},{"id":36,"ordem":38,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175825","nome":"Moussa Gning","cpf":"703.242.012-57","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-25"},{"id":37,"ordem":39,"dataRecebimento":"2025-10-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175728","nome":"Ozivalda Irene Alves","cpf":"337.338.908-92","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-19"},{"id":38,"ordem":40,"dataRecebimento":"2025-09-25","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500175167","nome":"Joyce Gomes de Araújo","cpf":"429.200.568-08","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-02"},{"id":39,"ordem":41,"dataRecebimento":"2025-09-25","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500176040","nome":"Caroline Alves da Silva","cpf":"395.093.738-26","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-05"},{"id":40,"ordem":42,"dataRecebimento":"2025-09-25","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500176015","nome":"Rafaela da Silva Dome","cpf":"420.751.248-92","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-15"},{"id":41,"ordem":43,"dataRecebimento":"2025-09-16","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500168969","nome":"Yéssica Soliz Parada","cpf":"237.867.938-67","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-15"},{"id":42,"ordem":44,"dataRecebimento":"2025-10-01","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500177364","nome":"Luiz Fernando Rodrigues Bonito","cpf":"403.635.368-33","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-18"},{"id":43,"ordem":45,"dataRecebimento":"","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500183054","nome":"Maria da Penha Reis da Silva","cpf":"148.066.064-72","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-22"},{"id":44,"ordem":46,"dataRecebimento":"","canalRecebido":"MDS","numSeiSigrc":"","nome":"Emmanuel Jean Pierre","cpf":"237.123.118-50","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-26"},{"id":45,"ordem":47,"dataRecebimento":"2025-10-20","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Iara Barbosa de Oliveira/Nelson de Freitas Mendonça Neto","cpf":"33148982827/44634326850","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-26"},{"id":46,"ordem":48,"dataRecebimento":"2025-09-10","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500186568","nome":"Gisele Priscila Neves Ribeiro","cpf":"326.791.208-33","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-26"},{"id":47,"ordem":49,"dataRecebimento":"2025-09-10","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500186525","nome":"Cassia Ferrari","cpf":"280.885.378-51","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":48,"ordem":50,"dataRecebimento":"2025-10-20","canalRecebido":"Outro","numSeiSigrc":"","nome":"Maria Aparecida Costa","cpf":"324.833.448-79","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-16"},{"id":49,"ordem":51,"dataRecebimento":"2025-11-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500186657","nome":"Jeniffer Talita da Silva Tavares","cpf":"419.599.168-40","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-26"},{"id":50,"ordem":52,"dataRecebimento":"2025-11-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500186606","nome":"Maria Claudia José de Araújo","cpf":"4652732465","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-02"},{"id":51,"ordem":53,"dataRecebimento":"2025-12-03","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Flavio Augusto Pereira dos Santos","cpf":"414.133.598-33","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-11-03"},{"id":52,"ordem":54,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021491-0","nome":"Paulo Henrique da Costa","cpf":"416.126.698-75","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-16"},{"id":53,"ordem":55,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021942-3","nome":"Amanda Helena de Assis Baptista","cpf":"363.947.198-97","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-16"},{"id":54,"ordem":55,"dataRecebimento":"2026-04-08","canalRecebido":"Ministério Público","numSeiSigrc":"SEI: 6024.2026/0006611-4","nome":"Gisele Priscila Neves Ribeiro","cpf":"326.791.208-33","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-05-05"},{"id":55,"ordem":56,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021937-7","nome":"Cássia Cristina Alves Landin","cpf":"280.602.258-47","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-02"},{"id":56,"ordem":57,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020932-0","nome":"Marcela Aparecida Costa Sampaio","cpf":"406.794.278-80","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-26"},{"id":57,"ordem":58,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021484-7","nome":"Mariana Pereira de Melo","cpf":"422.341.448-84","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-31"},{"id":58,"ordem":59,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021170-8","nome":"Lidiane de Lima Ribeiro Mota","cpf":"427.485.868-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-31"},{"id":59,"ordem":60,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021488-0","nome":"Patricia de Almeida Costa","cpf":"358.043.668-66","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-01"},{"id":60,"ordem":61,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021230-5","nome":"Dandara Lopes de Oliveira","cpf":"383.599.838-28","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-25"},{"id":61,"ordem":62,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021669-6","nome":"Leonardo Neves de Paula","cpf":"110.806.107-90","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-02"},{"id":62,"ordem":63,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021664-5","nome":"Aritson Mateus Martins Rodrigues","cpf":"6224804729","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-19"},{"id":63,"ordem":64,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021166-0","nome":"Thamires dos Santos Bomfim","cpf":"480.145.468-22","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-06"},{"id":64,"ordem":65,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021161-9","nome":"Marco Antônio Martins","cpf":"180.036.328-11","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-09"},{"id":65,"ordem":66,"dataRecebimento":"2025-11-04","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024","nome":"Rosana Aparecida Pereira Torres","cpf":"355.035.748-69","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-12"},{"id":66,"ordem":67,"dataRecebimento":"2025-12-11","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020461-2","nome":"Karina Moura da Silva","cpf":"386.778.018-80","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-13"},{"id":67,"ordem":68,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022190-8","nome":"Bruna Alves Coutinho","cpf":"471.358.708-75","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-07"},{"id":68,"ordem":69,"dataRecebimento":"2026-04-08","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0003857-9","nome":"ELIANA LUIZ DE AGUIAR","cpf":"305.453.151-15","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-08"},{"id":69,"ordem":69,"dataRecebimento":"2026-04-24","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0007650-0","nome":"JAQUELINE MICAEL BONOTI","cpf":"381.397.798-65","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-06-02"},{"id":70,"ordem":70,"dataRecebimento":"2026-04-02","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0006131-7","nome":"GABRIELA CRISTINA RAMOS BAGAGINI","cpf":"479.904.998-43","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-14"},{"id":71,"ordem":71,"dataRecebimento":"2026-01-23","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600014815","nome":"Manoela Gonçalves Alves","cpf":"1453842098","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-04"},{"id":72,"ordem":72,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020923-1","nome":"Bruna Batista da Silva","cpf":"356.289.568-21","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-23"},{"id":73,"ordem":73,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020928-2","nome":"Neci Conceição Silva/Domingos Pereira da Silva","cpf":"38674084320/17233617805","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-05"},{"id":74,"ordem":74,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022320-0","nome":"Cleide Coelho","cpf":"374.567.538-06","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-04-07"},{"id":75,"ordem":75,"dataRecebimento":"2025-01-16","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Maria Elcia Costa Nunes","cpf":"805.804.832-15","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":""},{"id":76,"ordem":76,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020892-8","nome":"Jucilaene Bezerra da Silva","cpf":"112.773.134-31","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-03-31"},{"id":77,"ordem":77,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Renato Tadeu Cominato","cpf":"4360795858","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-09-25"},{"id":78,"ordem":78,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Irene Ferreira Costa","cpf":"323.153.128-41","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":79,"ordem":79,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Vanessa Santiago de Souza","cpf":"323.439.328-16","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":80,"ordem":80,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Eliane Aparecida Dias de Almeida","cpf":"345.882.238-01","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":81,"ordem":81,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Eliane Nascimento Costa","cpf":"407.339.938-18","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":82,"ordem":82,"dataRecebimento":"2025-09-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Raquel Araujo Neri","cpf":"433.879.668-57","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-01-12"},{"id":83,"ordem":84,"dataRecebimento":"2025-10-07","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Maria Luci de Oliveira Belondi","cpf":"180.417.858-67","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":84,"ordem":87,"dataRecebimento":"2025-11-05","canalRecebido":"SIGRC","numSeiSigrc":"SIGRC: 35948089","nome":"Milene Aparecida Bernardo Felipe","cpf":"403.937.418-50","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":85,"ordem":88,"dataRecebimento":"2025-11-05","canalRecebido":"SIGRC","numSeiSigrc":"33422325","nome":"Vinicius Carriero dos Santos","cpf":"480.585.658-06","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-08"},{"id":86,"ordem":89,"dataRecebimento":"2025-11-05","canalRecebido":"SIGRC","numSeiSigrc":"35718811","nome":"Robson Antonio Ribeiro Garcia","cpf":"235.598.918-41","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-19"},{"id":87,"ordem":90,"dataRecebimento":"2025-11-07","canalRecebido":"SIGRC","numSeiSigrc":"SIGRC: 35099186","nome":"Francisca Elias dos Santos","cpf":"6038323422","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":88,"ordem":91,"dataRecebimento":"2025-11-07","canalRecebido":"SIGRC","numSeiSigrc":"35393936","nome":"Karina Silva Souza Santos","cpf":"119.800.845-80","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":89,"ordem":92,"dataRecebimento":"","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0008526-7","nome":"Makiesse Antonio Kiassungua","cpf":"234.226.978-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-19"},{"id":90,"ordem":93,"dataRecebimento":"2025-11-13","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Walkiria Laura Piacsek","cpf":"992.716.998-15","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-14"},{"id":91,"ordem":94,"dataRecebimento":"2025-11-24","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Maria Dayana Soares Sampaio","cpf":"8513933309","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-14"},{"id":92,"ordem":95,"dataRecebimento":"2025-11-27","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500169965","nome":"Jaqueline Cosme Pereira da Silva","cpf":"7524220731","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2025-12-10"},{"id":93,"ordem":96,"dataRecebimento":"2025-12-03","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Evani Galvão","cpf":"8661479851","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-11"},{"id":94,"ordem":97,"dataRecebimento":"2025-12-03","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Elke Ibraim Rocha","cpf":"315.092.698-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":95,"ordem":98,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0021342-5","nome":"Ketleem Sanches de Castro","cpf":"425.945.608-39","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-10"},{"id":96,"ordem":102,"dataRecebimento":"2025-12-05","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Sara Macedo da Silva Souza","cpf":"410.387.678-65","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":97,"ordem":103,"dataRecebimento":"2025-12-08","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Kelly Cristina Demuner/Floriza Rita Mendonça","cpf":"06541663823/91405289872","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-12"},{"id":98,"ordem":104,"dataRecebimento":"2025-12-19","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Jamile Costa Silva","cpf":"8031957533","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-13"},{"id":99,"ordem":105,"dataRecebimento":"2025-12-19","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Lukose Manduka","cpf":"2420836847","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-28"},{"id":100,"ordem":106,"dataRecebimento":"2025-12-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Tais Maria de Oliveira","cpf":"423.232.968-41","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-14"},{"id":101,"ordem":107,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022558-0","nome":"Muhammad Irfan Amin","cpf":"6194562722","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-03-30"},{"id":102,"ordem":108,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022392-7","nome":"Michelli Alves da Silva","cpf":"379.186.398-39","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-04-02"},{"id":103,"ordem":109,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0022848-1","nome":"Rafael Paulo da Cunha","cpf":"362.201.568-38","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-04-10"},{"id":104,"ordem":110,"dataRecebimento":"2026-01-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2025/0020415-9","nome":"Matheus Cupertino Nogueira Alves","cpf":"501.481.018-79","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-23"},{"id":105,"ordem":111,"dataRecebimento":"2026-01-15","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Ricardo Eduardo Goes","cpf":"299.815.278-31","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":106,"ordem":112,"dataRecebimento":"2026-01-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Jossinete Oliveira Melo","cpf":"196.515.348-85","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":107,"ordem":113,"dataRecebimento":"2026-01-20","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Henrique Augusto dos Reis de Jesus","cpf":"444.987.828-01","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-26"},{"id":108,"ordem":114,"dataRecebimento":"2025-12-03","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202500168675","nome":"Wendy Freitas Soares","cpf":"399.516.518-44","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":""},{"id":109,"ordem":115,"dataRecebimento":"2026-01-26","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Edna Suzeth Gonçalves Nhanga Santana","cpf":"238.405.788-09","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-02"},{"id":110,"ordem":116,"dataRecebimento":"2026-01-22","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Francine dos Santos Marques da Hora","cpf":"460.107.418-58","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":111,"ordem":117,"dataRecebimento":"2025-12-15","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Vitoria da Silva Soares","cpf":"522.990.888-22","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":112,"ordem":118,"dataRecebimento":"2026-01-14","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Rafaela Daiane de Brito","cpf":"482.759.818-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-17"},{"id":113,"ordem":119,"dataRecebimento":"2026-01-12","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Gladys Copajira Flores","cpf":"236.817.638-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-08"},{"id":114,"ordem":120,"dataRecebimento":"2025-12-18","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Zaira Silvia Anunciação da Silva","cpf":"237.390.388-10","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-28"},{"id":115,"ordem":122,"dataRecebimento":"2025-12-19","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Paulo Vinicius Santos Nascimento","cpf":"398.413.818-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":""},{"id":116,"ordem":123,"dataRecebimento":"2026-01-08","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Victor Guilherme Conrado Alves","cpf":"457.063.568-74","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":117,"ordem":124,"dataRecebimento":"2026-02-10","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"Claudete Aparecida Triginelli","cpf":"329.978.118-99","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""},{"id":118,"ordem":125,"dataRecebimento":"2026-01-29","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600019710","nome":"56 Diversos","cpf":"-","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-30"},{"id":119,"ordem":126,"dataRecebimento":"2026-02-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600024179","nome":"Aryane de Oliveira Andrade","cpf":"456.489.048-43","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-04-30"},{"id":120,"ordem":127,"dataRecebimento":"2026-01-29","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600021544","nome":"Vitoria Feitosa de Araujo","cpf":"446.400.538-19","reiteracao":"sim","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-03"},{"id":121,"ordem":128,"dataRecebimento":"2026-01-20","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600021480","nome":"Mauro Geovani Neto Batalha","cpf":"703.081.621-88","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-03-03"},{"id":122,"ordem":129,"dataRecebimento":"2026-02-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0002237-0","nome":"André Manuel Seixas Silva","cpf":"6177852793","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-02-18"},{"id":123,"ordem":132,"dataRecebimento":"2026-02-19","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"MAYARA GOMES BRITO","cpf":"424.963.238-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":124,"ordem":134,"dataRecebimento":"2026-03-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0000902-1","nome":"PAULO ROBERTO LUTFI","cpf":"325.656.448-84","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-06-02"},{"id":125,"ordem":135,"dataRecebimento":"2026-03-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0004010-7","nome":"LUCIANA MARTINS DOMINGOS","cpf":"176.927.128-75","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-06"},{"id":126,"ordem":136,"dataRecebimento":"2026-03-05","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"ANA CAROLINE PEREIRA DOS SANTOS","cpf":"445.978.478-55","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-26"},{"id":127,"ordem":138,"dataRecebimento":"2026-03-27","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600058847","nome":"ALEXANDRA MENDES DOS ANJOS","cpf":"346.786.688-37","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-03-31"},{"id":128,"ordem":139,"dataRecebimento":"2026-04-02","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"GUILJHERME RIBEIRO OLIVEIRA","cpf":"505.388.658-06","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-14"},{"id":129,"ordem":140,"dataRecebimento":"2026-04-02","canalRecebido":"MDS","numSeiSigrc":"","nome":"VANDA SUELI DE OLIVEIRA","cpf":"","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":""},{"id":130,"ordem":142,"dataRecebimento":"2026-02-03","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"ALEJANDRO MAXIMILIANO DE IBARLUCEA BECK","cpf":"236.801.598-11","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-06"},{"id":131,"ordem":143,"dataRecebimento":"2026-02-26","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"VANESSA DOS SANTOS SILVA","cpf":"374.625.378-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":""},{"id":132,"ordem":144,"dataRecebimento":"2026-03-17","canalRecebido":"Monitoramento interno","numSeiSigrc":"","nome":"CELISMAR MENDES DE SOUSA SILVA","cpf":"146.482.348-04","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":""},{"id":133,"ordem":145,"dataRecebimento":"2026-04-13","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0006896-6","nome":"JACQUELINE BARBOZA GOMES","cpf":"399.947.688-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-08"},{"id":134,"ordem":146,"dataRecebimento":"2026-04-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0006401-4","nome":"SOLANGE DE OLIVEIRA","cpf":"371.865.298-60","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-24"},{"id":135,"ordem":148,"dataRecebimento":"2026-03-26","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0005078-1","nome":"CAROLINA CARMELITA DE SOUSA","cpf":"482.379.768-00","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-24"},{"id":136,"ordem":149,"dataRecebimento":"2026-03-31","canalRecebido":"E-MAIL","numSeiSigrc":"","nome":"ABIAS OINCIANO DE ALMEIDA","cpf":"747570167","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"MARINA","respondidoEm":"2026-04-24"},{"id":137,"ordem":150,"dataRecebimento":"","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0007630-6","nome":"ELISABETE MADALENA JULIAO CAMBUNDO","cpf":"901.298.318-59","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":"2026-05-08"},{"id":138,"ordem":158,"dataRecebimento":"2025-08-12","canalRecebido":"MDS","numSeiSigrc":"SEI:6024202500223927","nome":"Michelli Alves da Silva","cpf":"379.186.398-39","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-02-04"},{"id":139,"ordem":159,"dataRecebimento":"2026-05-08","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0008457-0","nome":"Eva Agostinho Francisco","cpf":"993198708","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-05-21"},{"id":140,"ordem":160,"dataRecebimento":"2026-05-06","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024202600081164","nome":"Thais dos Santos Café Dias","cpf":"407.491.288-01","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-06-17"},{"id":141,"ordem":161,"dataRecebimento":"2026-05-05","canalRecebido":"MDS","numSeiSigrc":"SEI: 6024.2026/0008104-0","nome":"Alexander de Castro Almeida","cpf":"752.926.451-68","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-05-21"},{"id":142,"ordem":162,"dataRecebimento":"2026-06-02","canalRecebido":"MDS","numSeiSigrc":"6024202600098016","nome":"MAXIME DAVID ALEX TARNEAUD","cpf":"218.373.288-11","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":"2026-06-08"},{"id":143,"ordem":163,"dataRecebimento":"2025-12-19","canalRecebido":"SIGRC","numSeiSigrc":"","nome":"JOYCE GOMES DA SILVA COSTA","cpf":"231.105.808-88","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-10"},{"id":144,"ordem":164,"dataRecebimento":"2025-11-05","canalRecebido":"SIGRC","numSeiSigrc":"SIGRC 35883428","nome":"JAQUELINE DIAS RIBEIRO","cpf":"396.172.188-28","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Tatiana","respondidoEm":""},{"id":145,"ordem":165,"dataRecebimento":"2026-06-12","canalRecebido":"E-MAIL","numSeiSigrc":"","nome":"KAREN AKEMI UMENO","cpf":"441.495.218-24","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-17"},{"id":146,"ordem":166,"dataRecebimento":"2026-05-18","canalRecebido":"MDS","numSeiSigrc":"6024202600079828","nome":"Andressa Simões dos Santos","cpf":"537.396.188-41","reiteracao":"sim","reitData":"","reitOficio":"","atribuidoPara":"Marina","respondidoEm":""},{"id":147,"ordem":167,"dataRecebimento":"2025-11-26","canalRecebido":"SIGRC","numSeiSigrc":"34752666","nome":"KARINA LUNCA IGLEZIAS","cpf":"305.818.968-07","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":"2026-06-03"},{"id":148,"ordem":168,"dataRecebimento":"2025-11-26","canalRecebido":"SIGRC","numSeiSigrc":"35539333","nome":"Lucicleide Cavalcante da Silva","cpf":"392.443.028-45","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"","respondidoEm":""},{"id":149,"ordem":169,"dataRecebimento":"2026-06-18","canalRecebido":"E-MAIL","numSeiSigrc":"","nome":"João Lins Maues","cpf":"016.797.941-83","reiteracao":"nao","reitData":"","reitOficio":"","atribuidoPara":"Douglas","respondidoEm":""}];
 
 // ── INIT ─────────────────────────────────────────────────
 document.getElementById('perPage').value = '25';
