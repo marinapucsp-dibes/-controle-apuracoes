@@ -804,10 +804,11 @@ function impData(v){
     return {v:'', erro:`data inválida: "${v}"`};
   return {v:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
 }
-// Mesmo CPF (ou mesmo nome, se não houver CPF) + mesmo número SEI/SIGRC = possível duplicado
+// Mesmo CPF (ou mesmo nome, se não houver CPF) + mesmo número SEI/SIGRC + mesma data de recebimento
+// = possível duplicado. Casos da mesma pessoa em datas diferentes são reincidências, não duplicados.
 function chaveDup(r){
   const quem = r.cpf ? r.cpf.replace(/\D/g,'') : chaveCol(r.nome);
-  return quem ? `${quem}|${chaveCol(r.numSeiSigrc)}` : '';
+  return quem ? `${quem}|${chaveCol(r.numSeiSigrc)}|${r.dataRecebimento||''}` : '';
 }
 
 function lerPlanilha(input){
@@ -878,7 +879,7 @@ function prepararImport(nomeArq, linhas){
     let dup = false;
     const k = chaveDup(reg);
     if(!erros.length && k){
-      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesmo CPF/nome e SEI)'); }
+      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesma pessoa, mesmo SEI e mesma data)'); }
       else if(noArquivo.has(k)){ dup = true; avisos.push('repetido nesta planilha'); }
       noArquivo.add(k);
     }
