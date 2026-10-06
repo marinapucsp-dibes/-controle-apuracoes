@@ -9,6 +9,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
 
+<!-- SheetJS: leitura de planilhas Excel/CSV para a importação em lote -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -222,6 +225,22 @@
     .badge { padding:1px 5px; font-size:8.5px; }
   }
   .ph { display:none; }
+
+  /* IMPORTAÇÃO */
+  .modal.wide { max-width:1100px; }
+  .imp-help { font-size:12.5px; color:var(--c4); line-height:1.6; }
+  .imp-help code { background:var(--c2); padding:1px 5px; border-radius:4px; font-size:11.5px; color:var(--texto); }
+  .imp-sum { display:flex; gap:10px; flex-wrap:wrap; }
+  .imp-sum .badge { font-size:12px; padding:5px 10px; }
+  .imp-tw { max-height:52vh; overflow:auto; border:1px solid var(--borda); border-radius:8px; }
+  .imp-tw table { font-size:12px; }
+  .imp-tw thead th { position:sticky; top:0; background:var(--azul); cursor:default; }
+  .imp-tw tr.r-err  { background:var(--vermelho-bg); }
+  .imp-tw tr.r-dup  { background:var(--laranja-bg); }
+  .imp-msg { font-size:11px; color:var(--vermelho); }
+  .imp-tw tr.r-dup .imp-msg { color:var(--laranja); }
+  .imp-opt { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
+  .btn:disabled { opacity:.5; cursor:default; }
 </style>
 </head>
 <body>
@@ -291,6 +310,11 @@
     </select>
     <div class="tr">
       <span id="cntLabel" style="font-size:12px;color:var(--c4)"></span>
+      <input type="file" id="impFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="lerPlanilha(this)">
+      <button class="btn btn-outline" onclick="document.getElementById('impFile').click()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><path d="M12 3v12"/></svg>
+        Importar planilha
+      </button>
       <button class="btn btn-primary" onclick="abrirNovo()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Novo Registro
@@ -391,6 +415,26 @@
     <div class="cb">
       <button class="btn btn-outline" onclick="fecharConfirm()">Cancelar</button>
       <button class="btn btn-danger" onclick="confirmarDel()">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORTAÇÃO -->
+<div class="overlay hidden" id="iOverlay">
+  <div class="modal wide">
+    <div class="mh"><h2>Importar planilha</h2><button class="mc" onclick="fecharImport()">×</button></div>
+    <div class="mb">
+      <div class="imp-help" id="impHelp"></div>
+      <div class="imp-sum" id="impSum"></div>
+      <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="atualizarBotaoImport()"> Importar também os possíveis duplicados</label>
+      <div class="imp-tw"><table>
+        <thead><tr><th>Linha</th><th>Situação</th><th>Dt. Recebimento</th><th>Canal</th><th>N.º SEI/SIGRC</th><th>Nome</th><th>CPF</th><th>Atribuído Para</th><th>Respondido Em</th></tr></thead>
+        <tbody id="impBody"></tbody>
+      </table></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="fecharImport()">Cancelar</button>
+      <button class="btn btn-primary" id="impBtn" onclick="confirmarImport()">Importar</button>
     </div>
   </div>
 </div>
@@ -631,7 +675,9 @@ function editar(id){
   document.getElementById('bSalvar').textContent='Salvar Alterações';
   document.getElementById('eId').value=id;
   document.getElementById('fData').value=r.dataRecebimento||'';
-  document.getElementById('fCanal2').value=r.canalRecebido||'MDS';
+  const selCanal=document.getElementById('fCanal2');
+  if(r.canalRecebido && ![...selCanal.options].some(o=>o.value===r.canalRecebido)) selCanal.add(new Option(r.canalRecebido));
+  selCanal.value=r.canalRecebido||'MDS';
   document.getElementById('fSei').value=r.numSeiSigrc||'';
   document.getElementById('fNome').value=r.nome||'';
   document.getElementById('fCpf').value=r.cpf||'';
@@ -694,6 +740,199 @@ async function confirmarDel(){
   } catch(e) {
     console.error(e);
     toast('⚠ Erro ao excluir. Verifique sua conexão.');
+  }
+}
+
+// ── IMPORTAÇÃO DE PLANILHA ───────────────────────────────
+// Lê um arquivo Excel/CSV, mostra uma prévia e só ACRESCENTA registros
+// (nunca altera nem apaga os que já existem no banco).
+let impLinhas = [];
+
+const semAcento = s => String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+const chaveCol  = s => semAcento(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Nome da coluna na planilha (sem acentos, espaços e símbolos) → campo do sistema
+const IMP_COLUNAS = {
+  canal:'canalRecebido', canalrecebido:'canalRecebido',
+  sigrcsei:'numSeiSigrc', seisigrc:'numSeiSigrc', sei:'numSeiSigrc', sigrc:'numSeiSigrc', nseisigrc:'numSeiSigrc',
+  nome:'nome',
+  cpf:'cpf',
+  datarecebimento:'dataRecebimento', dtrecebimento:'dataRecebimento',
+  dataresposta:'respondidoEm', respondidoem:'respondidoEm',
+  tecnicor:'atribuidoPara', tecnico:'atribuidoPara', tecnica:'atribuidoPara', atribuidopara:'atribuidoPara', responsavel:'atribuidoPara',
+};
+const IMP_CANAIS = ['SEI','SIGRC','E-MAIL','MDS','Monitoramento interno','Presencial','Ministério Público','COMAS','Outro'];
+
+function impCanal(v){
+  v = String(v??'').trim();
+  if(!v) return 'Outro';
+  const k = chaveCol(v);
+  return IMP_CANAIS.find(c=>chaveCol(c)===k) || v;
+}
+function impCpf(v){
+  const orig = String(v??'').trim();
+  if(!orig) return {v:''};
+  let d = orig.replace(/\D/g,'');
+  // O Excel costuma apagar os zeros à esquerda do CPF quando a célula é numérica
+  if(d.length>=8 && d.length<11) d = d.padStart(11,'0');
+  if(d.length!==11) return {v:orig, aviso:'CPF com quantidade de dígitos diferente de 11'};
+  return {v:d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')};
+}
+function impData(v){
+  if(v===null || v===undefined || String(v).trim()==='') return {v:''};
+  let y,m,d;
+  if(typeof v==='number'){                       // data numérica do Excel
+    const p = XLSX.SSF.parse_date_code(v);
+    if(p){ y=p.y; m=p.m; d=p.d; }
+  } else {
+    const s = String(v).trim();
+    let r;
+    if((r = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))){ d=+r[1]; m=+r[2]; y=+r[3]; if(y<100) y+=2000; }
+    else if((r = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))){ y=+r[1]; m=+r[2]; d=+r[3]; }
+  }
+  const dt = y ? new Date(y, m-1, d) : null;
+  if(!dt || dt.getFullYear()!==y || dt.getMonth()!==m-1 || dt.getDate()!==d || y<1990 || y>2100)
+    return {v:'', erro:`data inválida: "${v}"`};
+  return {v:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
+}
+// Mesmo CPF (ou mesmo nome, se não houver CPF) + mesmo número SEI/SIGRC = possível duplicado
+function chaveDup(r){
+  const quem = r.cpf ? r.cpf.replace(/\D/g,'') : chaveCol(r.nome);
+  return quem ? `${quem}|${chaveCol(r.numSeiSigrc)}` : '';
+}
+
+function lerPlanilha(input){
+  const file = input.files[0];
+  input.value = '';                               // permite escolher o mesmo arquivo de novo
+  if(!file) return;
+  if(typeof XLSX==='undefined'){ toast('⚠ Não foi possível carregar o leitor de planilhas. Verifique a internet.'); return; }
+  const csv = /\.csv$/i.test(file.name);
+  const fr = new FileReader();
+  fr.onload = e => {
+    try {
+      let wb;
+      if(csv){
+        // CSV salvo pelo Excel costuma vir em Windows-1252; se não for UTF-8 válido, usa essa codificação.
+        // É lido como texto puro (raw) para o leitor não trocar dia e mês das datas.
+        let txt;
+        try { txt = new TextDecoder('utf-8', {fatal:true}).decode(e.target.result); }
+        catch(_) { txt = new TextDecoder('windows-1252').decode(e.target.result); }
+        wb = XLSX.read(txt.replace(/^\uFEFF/,''), {type:'string', raw:true});
+      } else {
+        wb = XLSX.read(e.target.result, {type:'array'});
+      }
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const linhas = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+      prepararImport(file.name, linhas);
+    } catch(err) {
+      console.error(err);
+      toast('⚠ Não foi possível ler o arquivo. Use .xlsx, .xls ou .csv.');
+    }
+  };
+  fr.readAsArrayBuffer(file);
+}
+
+function prepararImport(nomeArq, linhas){
+  const cab = (linhas[0]||[]).map(h=>IMP_COLUNAS[chaveCol(h)]||null);
+  const reconhecidas = (linhas[0]||[]).filter((h,i)=>cab[i]).map(h=>String(h).trim());
+  const ignoradas = (linhas[0]||[]).filter((h,i)=>!cab[i] && String(h).trim()).map(h=>String(h).trim());
+  if(!cab.includes('nome')){
+    toast('⚠ A planilha precisa ter uma coluna "nome" na primeira linha.', 4500);
+    return;
+  }
+  const existentes = new Set(db.map(chaveDup).filter(Boolean));
+  const noArquivo = new Set();
+  impLinhas = [];
+  linhas.slice(1).forEach((lin, i)=>{
+    if(!lin.some(c=>String(c).trim()!=='')) return;   // linha em branco
+    const bruto = {};
+    cab.forEach((campo, j)=>{ if(campo && bruto[campo]===undefined) bruto[campo] = lin[j]; });
+    const erros = [], avisos = [];
+    const dRec = impData(bruto.dataRecebimento), dResp = impData(bruto.respondidoEm), cpf = impCpf(bruto.cpf);
+    if(dRec.erro)  erros.push('Recebimento: '+dRec.erro);
+    if(dResp.erro) erros.push('Resposta: '+dResp.erro);
+    if(cpf.aviso)  avisos.push(cpf.aviso);
+    const reg = {
+      dataRecebimento: dRec.v,
+      canalRecebido: impCanal(bruto.canalRecebido),
+      numSeiSigrc: String(bruto.numSeiSigrc??'').trim(),
+      nome: String(bruto.nome??'').trim(),
+      cpf: cpf.v,
+      reiteracao:'nao', reitData:'', reitOficio:'',
+      atribuidoPara: String(bruto.atribuidoPara??'').trim(),
+      respondidoEm: dResp.v,
+    };
+    if(!reg.nome) erros.push('nome em branco');
+    let dup = false;
+    const k = chaveDup(reg);
+    if(!erros.length && k){
+      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesmo CPF/nome e SEI)'); }
+      else if(noArquivo.has(k)){ dup = true; avisos.push('repetido nesta planilha'); }
+      noArquivo.add(k);
+    }
+    impLinhas.push({linha:i+2, reg, erros, avisos, dup});
+  });
+
+  document.getElementById('impHelp').innerHTML =
+    `Arquivo <b>${esc(nomeArq)}</b>. Colunas reconhecidas: ${reconhecidas.map(h=>`<code>${esc(h)}</code>`).join(' ')}`+
+    (ignoradas.length ? `<br>Colunas ignoradas: ${ignoradas.map(h=>`<code>${esc(h)}</code>`).join(' ')}` : '')+
+    `<br>Nada é gravado até você clicar em <b>Importar</b>. Os registros atuais não são alterados — a importação só acrescenta novos casos.`;
+  const ok = impLinhas.filter(l=>!l.erros.length && !l.dup).length;
+  const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
+  const err = impLinhas.filter(l=>l.erros.length).length;
+  document.getElementById('impSum').innerHTML =
+    `<span class="badge b-resp">✓ ${ok} novo${ok!==1?'s':''}</span>`+
+    `<span class="badge b-pend">⚠ ${dup} possíve${dup!==1?'is':'l'} duplicado${dup!==1?'s':''}</span>`+
+    `<span class="badge b-sim">✕ ${err} com erro (não ser${err!==1?'ão':'á'} importado${err!==1?'s':''})</span>`;
+  document.getElementById('impDupOpt').style.display = dup ? '' : 'none';
+  document.getElementById('impDup').checked = false;
+  document.getElementById('impBody').innerHTML = impLinhas.length ? impLinhas.map(l=>{
+    const r = l.reg;
+    const sit = l.erros.length ? '<span class="badge b-sim">Erro</span>'
+              : l.dup ? '<span class="badge b-pend">Duplicado?</span>'
+              : '<span class="badge b-resp">Novo</span>';
+    const msg = [...l.erros, ...l.avisos].map(esc).join('<br>');
+    return `<tr class="${l.erros.length?'r-err':l.dup?'r-dup':''}">
+      <td>${l.linha}</td><td>${sit}${msg?`<div class="imp-msg">${msg}</div>`:''}</td>
+      <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td><td>${esc(r.canalRecebido)}</td>
+      <td class="mono">${esc(r.numSeiSigrc)||'—'}</td><td>${esc(r.nome)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td><td>${esc(r.atribuidoPara)||'—'}</td>
+      <td style="white-space:nowrap">${fd(r.respondidoEm)}</td></tr>`;
+  }).join('') : '<tr class="empty-row"><td colspan="9">A planilha não tem linhas com dados.</td></tr>';
+  atualizarBotaoImport();
+  document.getElementById('iOverlay').classList.remove('hidden');
+}
+
+function linhasParaImportar(){
+  const comDup = document.getElementById('impDup').checked;
+  return impLinhas.filter(l=>!l.erros.length && (comDup || !l.dup));
+}
+function atualizarBotaoImport(){
+  const n = linhasParaImportar().length;
+  const b = document.getElementById('impBtn');
+  b.textContent = n ? `Importar ${n} registro${n!==1?'s':''}` : 'Nada para importar';
+  b.disabled = !n;
+}
+function fecharImport(){ impLinhas = []; document.getElementById('iOverlay').classList.add('hidden'); }
+
+async function confirmarImport(){
+  const lst = linhasParaImportar();
+  if(!lst.length) return;
+  const b = document.getElementById('impBtn');
+  b.disabled = true; b.textContent = 'Importando…';
+  let id = nextId(), ordem = nextOrd();
+  const novos = {};
+  lst.forEach(l=>{ novos[String(id)] = {...l.reg, id, ordem}; id++; ordem++; });
+  try {
+    // update() grava todos de uma vez (ou nenhum, se falhar) sem tocar nos registros existentes
+    await db_ref.update(novos);
+    fecharImport();
+    toast(`✓ ${lst.length} registro${lst.length!==1?'s':''} importado${lst.length!==1?'s':''}.`, 4000);
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao importar. Nenhum registro foi gravado. Verifique sua conexão.', 4500);
+    atualizarBotaoImport();
   }
 }
 
