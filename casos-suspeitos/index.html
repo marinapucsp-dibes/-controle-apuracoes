@@ -19,6 +19,7 @@
     --verde:#2e7d32; --verde-bg:#e8f5e9;
     --laranja:#b45309; --laranja-bg:#fef3c7;
     --vermelho:#991b1b; --vermelho-bg:#fee2e2;
+    --roxo:#7c3aed;
     --c1:#f4f5f7; --c2:#e9eaec; --c3:#b0b3ba; --c4:#6b7280;
     --texto:#1a1d23; --borda:#d1d5db; --branco:#ffffff;
     --r:8px;
@@ -81,12 +82,14 @@
   .sc.resp  { border-left-color:var(--verde); }
   .sc.pend  { border-left-color:var(--laranja); }
   .sc.reit  { border-left-color:var(--vermelho); }
+  .sc.roxo  { border-left-color:var(--roxo); }
   .sl { font-size:11px; color:var(--c4); font-weight:500; text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
   .sv { font-size:28px; font-weight:700; line-height:1; }
   .sc.total .sv { color:var(--azul); }
   .sc.resp  .sv { color:var(--verde); }
   .sc.pend  .sv { color:var(--laranja); }
   .sc.reit  .sv { color:var(--vermelho); }
+  .sc.roxo  .sv { color:var(--roxo); }
 
   /* TOOLBAR */
   .toolbar {
@@ -100,7 +103,7 @@
   }
   .toolbar input:focus, .toolbar select:focus { border-color:var(--azul2); background:#fff; }
   .toolbar input[type=text] { flex:1 1 220px; min-width:160px; }
-  .tr { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .tr { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .btn {
     display:inline-flex; align-items:center; gap:6px;
     border-radius:7px; padding:8px 16px; font-size:13px; font-weight:500; cursor:pointer; border:none; transition:.15s;
@@ -132,6 +135,8 @@
   tbody tr.even:hover { background:var(--azul-bg); }
   td { padding:9px 10px; vertical-align:middle; }
   .empty-row td { text-align:center; padding:48px; color:var(--c4); }
+  .cut { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sub { font-size:11px; color:var(--c4); margin-top:2px; }
 
   /* BADGES */
   .badge {
@@ -140,14 +145,10 @@
   }
   .b-sei    { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
   .b-sigrc  { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
-  .b-email  { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
   .b-mds    { background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; }
   .b-mon    { background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
-  .b-pres   { background:#fce7f3; color:#9d174d; border:1px solid #f9a8d4; }
-  .b-mp     { background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; }
   .b-outro  { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
   .b-sim    { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
-  .b-nao    { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
   .b-resp   { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
   .b-pend   { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
   .num { font-weight:700; color:var(--azul); font-size:13px; }
@@ -157,7 +158,7 @@
   .pagination {
     display:flex; align-items:center; justify-content:space-between;
     padding:12px 16px; border-top:1px solid var(--c2);
-    font-size:13px; color:var(--c4);
+    font-size:13px; color:var(--c4); flex-wrap:wrap; gap:8px;
   }
   .page-btns { display:flex; gap:4px; }
   .page-btns button {
@@ -174,7 +175,7 @@
   /* MODAL */
   .overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:2rem 1rem; overflow-y:auto; }
   .overlay.hidden { display:none; }
-  .modal { background:#fff; border-radius:12px; width:100%; max-width:660px; box-shadow:0 20px 60px rgba(0,0,0,.2); animation:sI .2s ease; }
+  .modal { background:#fff; border-radius:12px; width:100%; max-width:720px; box-shadow:0 20px 60px rgba(0,0,0,.2); animation:sI .2s ease; }
   @keyframes sI { from{transform:translateY(-16px);opacity:0} to{transform:none;opacity:1} }
   .mh { padding:18px 22px; border-bottom:1px solid var(--borda); display:flex; align-items:center; justify-content:space-between; background:var(--azul); border-radius:12px 12px 0 0; color:#fff; }
   .mh h2 { font-size:16px; font-weight:600; }
@@ -185,16 +186,18 @@
   .fr { display:grid; gap:12px; }
   .fr.c2 { grid-template-columns:1fr 1fr; }
   .fr.c3 { grid-template-columns:1fr 1fr 1fr; }
+  .fr.c4 { grid-template-columns:repeat(4,1fr); }
   .fi { display:flex; flex-direction:column; gap:5px; }
   .fi label { font-size:11.5px; font-weight:600; color:var(--c4); text-transform:uppercase; letter-spacing:.4px; }
-  .fi input, .fi select { border:1px solid var(--borda); border-radius:6px; padding:8px 11px; font-size:13px; color:var(--texto); outline:none; transition:.15s; font-family:inherit; background:#fff; }
-  .fi input:focus, .fi select:focus { border-color:var(--azul2); box-shadow:0 0 0 3px rgba(37,103,176,.12); }
-  .fi input.err { border-color:#ef4444; }
+  .fi input, .fi select, .fi textarea { border:1px solid var(--borda); border-radius:6px; padding:8px 11px; font-size:13px; color:var(--texto); outline:none; transition:.15s; font-family:inherit; background:#fff; }
+  .fi input:focus, .fi select:focus, .fi textarea:focus { border-color:var(--azul2); box-shadow:0 0 0 3px rgba(37,103,176,.12); }
+  .fi input.err, .rbox.err { border-color:#ef4444; }
   .rbox { border:1px solid var(--borda); border-radius:8px; padding:14px; background:var(--c1); }
   .rbox legend { font-size:11.5px; font-weight:600; color:var(--c4); text-transform:uppercase; letter-spacing:.4px; margin-bottom:10px; }
-  .rg { display:flex; gap:20px; margin-bottom:12px; }
+  .rg { display:flex; gap:20px; flex-wrap:wrap; }
   .rg label { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; }
-  .rs { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .rs { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+  .rs.r3 { grid-template-columns:1fr 1fr 1.6fr; }
   .rs.hidden { display:none; }
 
   /* CONFIRM */
@@ -205,7 +208,7 @@
   .cb { display:flex; gap:10px; justify-content:center; }
 
   /* TOAST */
-  #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--texto); color:#fff; padding:11px 22px; border-radius:8px; font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,.2); opacity:0; transition:.25s; pointer-events:none; z-index:999; white-space:nowrap; }
+  #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--texto); color:#fff; padding:11px 22px; border-radius:8px; font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,.2); opacity:0; transition:.25s; pointer-events:none; z-index:999; max-width:calc(100vw - 32px); text-align:center; }
   #toast.show { opacity:1; }
 
   /* PRINT */
@@ -221,26 +224,40 @@
     thead tr { background:var(--azul)!important; }
     thead th { padding:6px; font-size:9px; }
     td { padding:5px 6px; }
+    .cut { max-width:none; white-space:normal; }
     tbody tr { page-break-inside:avoid; }
     .badge { padding:1px 5px; font-size:8.5px; }
   }
   .ph { display:none; }
 
   /* IMPORTAÇÃO */
-  .modal.wide { max-width:1100px; }
+  .modal.wide { max-width:1200px; }
   .imp-help { font-size:12.5px; color:var(--c4); line-height:1.6; }
   .imp-help code { background:var(--c2); padding:1px 5px; border-radius:4px; font-size:11.5px; color:var(--texto); }
+  .imp-entrada { display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start; }
+  .imp-entrada .ou { display:flex; flex-direction:column; gap:8px; }
+  .imp-entrada textarea { width:100%; min-height:110px; resize:vertical; font-size:12.5px; }
   .imp-sum { display:flex; gap:10px; flex-wrap:wrap; }
   .imp-sum .badge { font-size:12px; padding:5px 10px; }
-  .imp-tw { max-height:52vh; overflow:auto; border:1px solid var(--borda); border-radius:8px; }
+  .imp-tw { max-height:46vh; overflow:auto; border:1px solid var(--borda); border-radius:8px; }
   .imp-tw table { font-size:12px; }
   .imp-tw thead th { position:sticky; top:0; background:var(--azul); cursor:default; }
   .imp-tw tr.r-err  { background:var(--vermelho-bg); }
   .imp-tw tr.r-dup  { background:var(--laranja-bg); }
   .imp-msg { font-size:11px; color:var(--vermelho); }
-  .imp-tw tr.r-dup .imp-msg { color:var(--laranja); }
+  .imp-msg.av { color:var(--laranja); }
   .imp-opt { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
   .btn:disabled { opacity:.5; cursor:default; }
+  .imp-prev { display:flex; flex-direction:column; gap:14px; }
+  .hidden, .imp-prev.hidden { display:none; }
+
+  /* CELULAR */
+  @media (max-width:700px) {
+    header { padding:0 16px; }
+    .container { padding:16px 16px 40px; }
+    .fr.c2, .fr.c3, .fr.c4, .rs, .rs.r3, .imp-entrada { grid-template-columns:1fr; }
+    .tr { margin-left:0; }
+  }
 </style>
 </head>
 <body>
@@ -282,44 +299,35 @@
   <!-- STATS -->
   <div class="sg no-print">
     <div class="sc total"><div class="sl">Total de Casos</div><div class="sv" id="sTotal">–</div></div>
-    <div class="sc resp" ><div class="sl">Respondidos</div>     <div class="sv" id="sResp">–</div></div>
-    <div class="sc pend" ><div class="sl">Pendentes</div>       <div class="sv" id="sPend">–</div></div>
-    <div class="sc reit" ><div class="sl">Reiterações</div>     <div class="sv" id="sReit">–</div></div>
-    <div class="sc reit" ><div class="sl">Reincidências</div>   <div class="sv" id="sReinc">–</div></div>
-    <div class="sc total" style="border-left-color:#7c3aed"><div class="sl">Exibindo</div><div class="sv" id="sView" style="color:#7c3aed">–</div></div>
+    <div class="sc reit" ><div class="sl">Apuração Entrevistador</div><div class="sv" id="sEntrev">–</div></div>
+    <div class="sc pend" ><div class="sl">Monitoramento de Rotina</div><div class="sv" id="sRotina">–</div></div>
+    <div class="sc resp" ><div class="sl">Com Parecer</div><div class="sv" id="sCom">–</div></div>
+    <div class="sc reit" ><div class="sl">Sem Parecer</div><div class="sv" id="sSem">–</div></div>
+    <div class="sc roxo" ><div class="sl">Exibindo</div><div class="sv" id="sView">–</div></div>
   </div>
 
   <!-- TOOLBAR -->
   <div class="toolbar no-print">
-    <input type="text" id="busca" placeholder="🔍  Buscar por nome, CPF, SEI, atribuído…" oninput="goPage(1)">
-    <select id="fCanal" onchange="goPage(1)">
-      <option value="">Todos os canais</option>
-      <option>SEI</option><option>SIGRC</option><option>E-MAIL</option>
-      <option>MDS</option><option>Monitoramento interno</option>
-      <option>Presencial</option><option>Ministério Público</option>
-      <option>COMAS</option><option>Outro</option>
+    <input type="text" id="busca" placeholder="🔍  Buscar por nome, CPF, parecer, entrevistador, técnico…" oninput="goPage(1)">
+    <select id="fTipo" onchange="goPage(1)">
+      <option value="">Todos os tipos</option>
+      <option value="entrevistador">Apuração entrevistador</option>
+      <option value="rotina">Monitoramento de Rotina</option>
     </select>
-    <select id="fStatus" onchange="goPage(1)">
-      <option value="">Todos os status</option>
-      <option value="respondido">Respondidos</option>
-      <option value="pendente">Pendentes</option>
+    <select id="fBase" onchange="goPage(1)">
+      <option value="">Todas as bases</option>
+      <option>CAD</option><option>PBF</option>
     </select>
-    <select id="fReit" onchange="goPage(1)">
-      <option value="">Com/sem reiteração</option>
-      <option value="sim">Com reiteração</option>
-      <option value="nao">Sem reiteração</option>
-    </select>
-    <select id="fReinc" onchange="goPage(1)">
-      <option value="">Com/sem reincidência</option>
-      <option value="sim">Com reincidência</option>
-      <option value="nao">Sem reincidência</option>
+    <select id="fComParecer" onchange="goPage(1)">
+      <option value="">Com/sem parecer</option>
+      <option value="com">Com parecer</option>
+      <option value="sem">Sem parecer</option>
     </select>
     <div class="tr">
       <span id="cntLabel" style="font-size:12px;color:var(--c4)"></span>
-      <input type="file" id="impFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="lerPlanilha(this)">
-      <button class="btn btn-outline" onclick="document.getElementById('impFile').click()">
+      <button class="btn btn-outline" onclick="abrirImport()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><path d="M12 3v12"/></svg>
-        Importar planilha
+        Importar lista
       </button>
       <button class="btn btn-primary" onclick="abrirNovo()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -334,15 +342,15 @@
       <table id="tbl">
         <thead><tr>
           <th onclick="sort('ordem')">N. Ordem<span id="si-ordem"> ↕</span></th>
-          <th onclick="sort('dataRecebimento')">Dt. Recebimento<span id="si-dataRecebimento"> ↕</span></th>
-          <th onclick="sort('canalRecebido')">Canal<span id="si-canalRecebido"> ↕</span></th>
-          <th onclick="sort('numSeiSigrc')">N.º SEI/SIGRC<span id="si-numSeiSigrc"> ↕</span></th>
           <th onclick="sort('nome')">Nome<span id="si-nome"> ↕</span></th>
           <th onclick="sort('cpf')">CPF<span id="si-cpf"> ↕</span></th>
-          <th onclick="sort('reiteracao')">Reiteração<span id="si-reiteracao"> ↕</span></th>
-          <th onclick="sort('reincidencia')">Reincidência<span id="si-reincidencia"> ↕</span></th>
-          <th onclick="sort('atribuidoPara')">Atribuído Para<span id="si-atribuidoPara"> ↕</span></th>
-          <th onclick="sort('respondidoEm')">Respondido Em<span id="si-respondidoEm"> ↕</span></th>
+          <th onclick="sort('dataExclusao')">Dt. Exclusão<span id="si-dataExclusao"> ↕</span></th>
+          <th onclick="sort('tipo')">Tipo de Monitoramento<span id="si-tipo"> ↕</span></th>
+          <th onclick="sort('mesAno')">Mês/Ano<span id="si-mesAno"> ↕</span></th>
+          <th onclick="sort('base')">Base<span id="si-base"> ↕</span></th>
+          <th onclick="sort('entrevNome')">Entrevistador<span id="si-entrevNome"> ↕</span></th>
+          <th onclick="sort('parecer')">N.º Parecer<span id="si-parecer"> ↕</span></th>
+          <th onclick="sort('tecnico')">Técnico Avaliador<span id="si-tecnico"> ↕</span></th>
           <th class="no-print">Ações</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
@@ -351,7 +359,7 @@
     <!-- PAGINAÇÃO -->
     <div class="pagination no-print">
       <div class="per-page">
-        Registros por página:
+        Casos por página:
         <select id="perPage" onchange="goPage(1)">
           <option value="25">25</option>
           <option value="50">50</option>
@@ -371,39 +379,32 @@
     <div class="mh"><h2 id="mTitle">Novo Caso</h2><button class="mc" onclick="fecharModal()">×</button></div>
     <div class="mb">
       <input type="hidden" id="eId">
-      <div class="fr c3">
-        <div class="fi"><label>Data de Recebimento *</label><input type="date" id="fData"></div>
-        <div class="fi"><label>Canal Recebido *</label>
-          <select id="fCanal2">
-            <option>SEI</option><option>SIGRC</option><option>E-MAIL</option>
-            <option>MDS</option><option>Monitoramento interno</option>
-            <option>Presencial</option><option>Ministério Público</option>
-            <option>COMAS</option><option>Outro</option>
-          </select>
-        </div>
-        <div class="fi"><label>N.º SEI / SIGRC</label><input type="text" id="fSei" placeholder="Ex: 0001234/2024"></div>
-      </div>
       <div class="fr c2">
         <div class="fi"><label>Nome *</label><input type="text" id="fNome" placeholder="Nome completo"></div>
         <div class="fi"><label>CPF</label><input type="text" id="fCpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)"></div>
       </div>
-      <div class="rbox">
-        <legend>Reiteração</legend>
-        <div class="rg">
-          <label><input type="radio" name="reit" value="nao" checked onchange="toggleReit()"> Não</label>
-          <label><input type="radio" name="reit" value="sim" onchange="toggleReit()"> Sim</label>
-        </div>
-        <div class="rs hidden" id="rSub">
-          <div class="fi"><label>Data da Reiteração</label><input type="date" id="fRData"></div>
-          <div class="fi"><label>N.º do Ofício</label><input type="text" id="fROfc" placeholder="N.º do ofício"></div>
-        </div>
-      </div>
       <div class="fr c3">
-        <div class="fi"><label>Reincidência</label>
-          <select id="fReinc2"><option value="nao">Não</option><option value="sim">Sim</option></select>
+        <div class="fi"><label>Data da Exclusão</label><input type="date" id="fData"></div>
+        <div class="fi"><label>N.º do Parecer</label><input type="text" id="fParecer" placeholder="XX/XXXX" maxlength="9" oninput="maskParecer(this)" onblur="ajustarParecer(this)"></div>
+        <div class="fi"><label>Técnico Avaliador</label><input type="text" id="fTecnico" placeholder="Nome do técnico"></div>
+      </div>
+      <div class="rbox" id="tipoBox">
+        <legend>Tipo de Monitoramento *</legend>
+        <div class="rg">
+          <label><input type="radio" name="tipo" value="entrevistador" onchange="toggleTipo()"> Apuração entrevistador</label>
+          <label><input type="radio" name="tipo" value="rotina" onchange="toggleTipo()"> Monitoramento de Rotina</label>
         </div>
-        <div class="fi"><label>Atribuído Para</label><input type="text" id="fAtrib" placeholder="Responsável pela análise"></div>
-        <div class="fi"><label>Respondido Em</label><input type="date" id="fResp"></div>
+        <div class="rs hidden" id="subEntrev">
+          <div class="fi"><label>Nome do Entrevistador</label><input type="text" id="fENome" placeholder="Nome completo do entrevistador"></div>
+          <div class="fi"><label>CPF do Entrevistador</label><input type="text" id="fECpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)"></div>
+        </div>
+        <div class="rs r3 hidden" id="subRotina">
+          <div class="fi"><label>Mês/Ano</label><input type="text" id="fMes" placeholder="MM/AAAA" maxlength="7" oninput="maskMes(this)"></div>
+          <div class="fi"><label>Base</label>
+            <select id="fBase2"><option value="">Selecione…</option><option>CAD</option><option>PBF</option></select>
+          </div>
+          <div class="fi"><label>Entrevistador Responsável</label><input type="text" id="fRResp" placeholder="Nome do entrevistador"></div>
+        </div>
       </div>
     </div>
     <div class="mf">
@@ -432,20 +433,51 @@
 <!-- MODAL IMPORTAÇÃO -->
 <div class="overlay hidden" id="iOverlay">
   <div class="modal wide">
-    <div class="mh"><h2>Importar planilha</h2><button class="mc" onclick="fecharImport()">×</button></div>
+    <div class="mh"><h2>Importar lista de nomes</h2><button class="mc" onclick="fecharImport()">×</button></div>
     <div class="mb">
-      <div class="imp-help" id="impHelp"></div>
-      <div class="imp-sum" id="impSum"></div>
-      <div class="imp-help" id="impReinc"></div>
-      <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="renderImport()"> Importar também os possíveis duplicados</label>
-      <div class="imp-tw"><table>
-        <thead><tr><th>Linha</th><th>Situação</th><th>Dt. Recebimento</th><th>Canal</th><th>N.º SEI/SIGRC</th><th>Nome</th><th>CPF</th><th>Reincidência</th><th>Atribuído Para</th><th>Respondido Em</th></tr></thead>
-        <tbody id="impBody"></tbody>
-      </table></div>
+      <div class="imp-entrada">
+        <div class="ou">
+          <input type="file" id="impFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="lerPlanilha(this)">
+          <button class="btn btn-primary" onclick="document.getElementById('impFile').click()">Escolher planilha (.xlsx / .csv)</button>
+          <button class="btn btn-outline" onclick="baixarModelo()">Baixar planilha modelo</button>
+        </div>
+        <div class="fi">
+          <label>ou cole a lista aqui</label>
+          <textarea id="impTxt" placeholder="Um nome por linha. Pode ter o CPF ao lado (ex.: Maria da Silva; 123.456.789-00).&#10;Também dá para copiar as linhas direto do Excel e colar aqui."></textarea>
+          <div><button class="btn btn-outline btn-sm" onclick="lerColado()">Ler lista colada</button></div>
+        </div>
+      </div>
+
+      <div id="impPrev" class="imp-prev hidden">
+        <div class="imp-help" id="impHelp"></div>
+        <fieldset class="rbox">
+          <legend>Preencher nas linhas em que a lista não informar</legend>
+          <div class="fr c4">
+            <div class="fi"><label>Tipo de Monitoramento</label>
+              <select id="pTipo" onchange="montarImport()"><option value="">—</option><option value="entrevistador">Apuração entrevistador</option><option value="rotina">Monitoramento de Rotina</option></select>
+            </div>
+            <div class="fi"><label>Data da Exclusão</label><input type="date" id="pData" onchange="montarImport()"></div>
+            <div class="fi"><label>N.º do Parecer</label><input type="text" id="pParecer" placeholder="XX/XXXX" maxlength="9" oninput="maskParecer(this)" onchange="montarImport()"></div>
+            <div class="fi"><label>Técnico Avaliador</label><input type="text" id="pTecnico" onchange="montarImport()"></div>
+            <div class="fi"><label>Entrevistador</label><input type="text" id="pENome" onchange="montarImport()"></div>
+            <div class="fi" id="pECpfBox"><label>CPF do Entrevistador</label><input type="text" id="pECpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)" onchange="montarImport()"></div>
+            <div class="fi"><label>Mês/Ano (rotina)</label><input type="text" id="pMes" placeholder="MM/AAAA" maxlength="7" oninput="maskMes(this)" onchange="montarImport()"></div>
+            <div class="fi"><label>Base (rotina)</label>
+              <select id="pBase" onchange="montarImport()"><option value="">—</option><option>CAD</option><option>PBF</option></select>
+            </div>
+          </div>
+        </fieldset>
+        <div class="imp-sum" id="impSum"></div>
+        <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="renderImport()"> Importar também os possíveis duplicados</label>
+        <div class="imp-tw"><table>
+          <thead><tr><th>Linha</th><th>Situação</th><th>Nome</th><th>CPF</th><th>Dt. Exclusão</th><th>Tipo</th><th>Mês/Ano</th><th>Base</th><th>Entrevistador</th><th>N.º Parecer</th><th>Técnico Avaliador</th></tr></thead>
+          <tbody id="impBody"></tbody>
+        </table></div>
+      </div>
     </div>
     <div class="mf">
       <button class="btn btn-outline" onclick="fecharImport()">Cancelar</button>
-      <button class="btn btn-primary" id="impBtn" onclick="confirmarImport()">Importar</button>
+      <button class="btn btn-primary" id="impBtn" onclick="confirmarImport()" disabled>Importar</button>
     </div>
   </div>
 </div>
@@ -456,6 +488,8 @@
 // ════════════════════════════════════════════════════════
 // CONFIGURAÇÃO DO FIREBASE
 // ════════════════════════════════════════════════════════
+// Usa o mesmo banco do Controle de Apurações, mas em uma área separada
+// ("casosSuspeitos"), então os dados dos dois sistemas não se misturam.
 const firebaseConfig = {
   apiKey: "AIzaSyBeUbSFI45r-t3QppxsX8xEV04EYLqmZ_8",
   authDomain: "controle-apuracoes.firebaseapp.com",
@@ -507,14 +541,20 @@ function setConn(online) {
   }
 }
 
-async function saveDb() {
-  // Não usado diretamente; gravações são feitas registro a registro (ver salvar/confirmarDel)
-}
-
 // ── UTILS ────────────────────────────────────────────────
+// fd serve para datas (AAAA-MM-DD → DD/MM/AAAA) e para mês/ano (AAAA-MM → MM/AAAA)
 const fd = s => s ? s.split('-').reverse().join('/') : '—';
-const nextId = () => db.length ? Math.max(...db.map(r=>r.id))+1 : 1;
-const nextOrd = () => db.length ? Math.max(...db.map(r=>r.ordem))+1 : 1;
+const nextId = () => db.length ? Math.max(...db.map(r=>+r.id||0))+1 : 1;
+const nextOrd = () => db.length ? Math.max(...db.map(r=>+r.ordem||0))+1 : 1;
+const semAcento = s => String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+const chaveCol  = s => semAcento(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+const normNome  = s => semAcento(s).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const soDig = s => String(s??'').replace(/\D/g,'');
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const vazio = v => v===undefined || v===null || String(v).trim()==='';
+const $ = id => document.getElementById(id);
+
+const TIPOS = { entrevistador:'Apuração entrevistador', rotina:'Monitoramento de Rotina' };
 
 function maskCpf(el) {
   let v = el.value.replace(/\D/g,'').slice(0,11);
@@ -523,44 +563,140 @@ function maskCpf(el) {
   else if(v.length>3) v=v.replace(/(\d{3})(\d{1,3})/,'$1.$2');
   el.value=v;
 }
-function toast(msg,dur=2800){
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),dur);
+function maskMes(el) {
+  let v = el.value.replace(/\D/g,'').slice(0,6);
+  if (v.length>2) v = v.slice(0,2)+'/'+v.slice(2);
+  el.value = v;
 }
-const CANAL_CLS = {
-  'SEI':'b-sei','SIGRC':'b-sigrc','E-MAIL':'b-email','MDS':'b-mds',
-  'Monitoramento interno':'b-mon','Presencial':'b-pres',
-  'Ministério Público':'b-mp','COMAS':'b-outro','Outro':'b-outro'
-};
-function badgeCanal(v){ return `<span class="badge ${CANAL_CLS[v]||'b-outro'}">${v||'—'}</span>`; }
+// N.º do parecer: número, barra e ano (XX/XXXX)
+function maskParecer(el) {
+  const p = el.value.replace(/[^\d\/]/g,'').split('/');
+  el.value = p.length>1 ? p[0].slice(0,4)+'/'+p.slice(1).join('').slice(0,4) : p[0].slice(0,6);
+}
+function ajustarParecer(el) {
+  const r = parseParecer(el.value);
+  if (!r.erro) el.value = r.v;
+  el.classList.toggle('err', !!r.erro);
+}
+function toast(msg,dur=2800){
+  const t=$('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(()=>t.classList.remove('show'),dur);
+}
+function badgeTipo(v){
+  if(v==='entrevistador') return '<span class="badge b-mds">Apuração entrevistador</span>';
+  if(v==='rotina') return '<span class="badge b-mon">Monitoramento de Rotina</span>';
+  return '—';
+}
+function badgeBase(v){ return v ? `<span class="badge ${v==='PBF'?'b-sigrc':'b-sei'}">${esc(v)}</span>` : '—'; }
+
+// ── LEITURA E VALIDAÇÃO DE VALORES ───────────────────────
+// Usadas tanto no formulário quanto na importação.
+function parseCpf(v){
+  const orig = String(v??'').trim();
+  if(!orig) return {v:''};
+  let d = orig.replace(/\D/g,'');
+  // O Excel costuma apagar os zeros à esquerda do CPF quando a célula é numérica
+  if(d.length>=8 && d.length<11) d = d.padStart(11,'0');
+  if(d.length!==11) return {v:orig, aviso:'CPF com quantidade de dígitos diferente de 11'};
+  return {v:d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')};
+}
+function parseData(v){
+  if(vazio(v)) return {v:''};
+  let y,m,d;
+  if(typeof v==='number'){                       // data numérica do Excel
+    const p = XLSX.SSF.parse_date_code(v);
+    if(p){ y=p.y; m=p.m; d=p.d; }
+  } else {
+    const s = String(v).trim();
+    let r;
+    if((r = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))){ d=+r[1]; m=+r[2]; y=+r[3]; if(y<100) y+=2000; }
+    else if((r = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))){ y=+r[1]; m=+r[2]; d=+r[3]; }
+  }
+  const dt = y ? new Date(y, m-1, d) : null;
+  if(!dt || dt.getFullYear()!==y || dt.getMonth()!==m-1 || dt.getDate()!==d || y<1990 || y>2100)
+    return {v:'', erro:`data inválida: "${v}"`};
+  return {v:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
+}
+// Mês/ano do monitoramento, gravado como AAAA-MM. Aceita 03/2025, 3/25, 2025-03, mar/2025, março de 2025…
+const MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+function parseMesAno(v){
+  if(vazio(v)) return {v:''};
+  let y, m;
+  if(typeof v==='number'){                       // o Excel transforma "03/2025" em data
+    const p = XLSX.SSF.parse_date_code(v);
+    if(p){ y=p.y; m=p.m; }
+  } else {
+    const s = semAcento(v).toLowerCase().trim();
+    let r;
+    if((r = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))){ m=+r[2]; y=+r[3]; }
+    else if((r = s.match(/^(\d{1,2})[\/.-](\d{2}|\d{4})$/))){ m=+r[1]; y=+r[2]; }
+    else if((r = s.match(/^(\d{4})[\/.-](\d{1,2})(?:[\/.-]\d{1,2})?$/))){ y=+r[1]; m=+r[2]; }
+    else if((r = s.match(/^([a-z]{3})[a-z]*\.?\s*(?:de\s+|[\/.-]\s*)?(\d{2}|\d{4})$/))){ m=MESES.indexOf(r[1])+1; y=+r[2]; }
+    if(y && y<100) y+=2000;
+  }
+  if(!y || !(m>=1 && m<=12) || y<1990 || y>2100) return {v:'', erro:`mês/ano inválido: "${v}" (use MM/AAAA)`};
+  return {v:`${y}-${String(m).padStart(2,'0')}`};
+}
+// N.º do parecer no formato XX/XXXX (número com pelo menos 2 dígitos / ano com 4 dígitos)
+function parseParecer(v){
+  if(vazio(v)) return {v:''};
+  let n, a;
+  if(typeof v==='number'){
+    // O Excel transforma "05/2025" em data (1º de maio de 2025)
+    const p = XLSX.SSF.parse_date_code(v);
+    if(p && p.d===1){ n=String(p.m); a=String(p.y); }
+  } else {
+    const s = String(v).trim();
+    let r;
+    if((r = s.match(/^(\d{1,4})\s*[\/.-]\s*(\d{4}|\d{2})$/))){ n=r[1]; a=r[2]; }
+    else if(/^\d{6}$/.test(s)){ n=s.slice(0,2); a=s.slice(2); }
+  }
+  if(a && a.length===2) a='20'+a;
+  if(!n || !(+a>=1990 && +a<=2100)) return {v:String(v).trim(), erro:`N.º do parecer inválido: "${v}" (use XX/XXXX)`};
+  return {v:`${n.padStart(2,'0')}/${a}`};
+}
+function parseTipo(v){
+  const k = chaveCol(v);
+  if(!k) return {v:''};
+  if(k.includes('entrev') || k.includes('apura')) return {v:'entrevistador'};
+  if(k.includes('rotina') || k.includes('monit')) return {v:'rotina'};
+  return {v:'', erro:`tipo não reconhecido: "${v}" (use Apuração entrevistador ou Monitoramento de Rotina)`};
+}
+function parseBase(v){
+  const k = chaveCol(v);
+  if(!k) return {v:''};
+  if(k.includes('pbf') || k.includes('bolsa')) return {v:'PBF'};
+  if(k.includes('cad')) return {v:'CAD'};
+  return {v:'', erro:`base não reconhecida: "${v}" (use CAD ou PBF)`};
+}
 
 // ── FILTER + SORT ────────────────────────────────────────
 function filtrar() {
-  const q = document.getElementById('busca').value.toLowerCase();
-  const c = document.getElementById('fCanal').value;
-  const s = document.getElementById('fStatus').value;
-  const ri = document.getElementById('fReit').value;
-  const rc = document.getElementById('fReinc').value;
+  const q = semAcento($('busca').value).toLowerCase().trim();
+  const t = $('fTipo').value, b = $('fBase').value, p = $('fComParecer').value;
   return db.filter(r => {
-    if(q && !`${r.nome} ${r.cpf} ${r.numSeiSigrc} ${r.atribuidoPara} ${r.ordem}`.toLowerCase().includes(q)) return false;
-    if(c && !r.canalRecebido?.includes(c)) return false;
-    if(s==='respondido' && !r.respondidoEm) return false;
-    if(s==='pendente'   &&  r.respondidoEm) return false;
-    if(ri==='sim' && r.reiteracao!=='sim') return false;
-    if(ri==='nao' && r.reiteracao==='sim') return false;
-    if(rc==='sim' && r.reincidencia!=='sim') return false;
-    if(rc==='nao' && r.reincidencia==='sim') return false;
+    if(q && !semAcento(`${r.nome} ${r.cpf} ${r.parecer} ${r.tecnico} ${r.entrevNome} ${r.entrevCpf} ${fd(r.mesAno)} ${r.ordem}`).toLowerCase().includes(q)) return false;
+    if(t && r.tipo!==t) return false;
+    if(b && r.base!==b) return false;
+    if(p==='com' && !r.parecer) return false;
+    if(p==='sem' &&  r.parecer) return false;
     return true;
   });
 }
+function valOrd(r, f){
+  if(f==='ordem') return +r.ordem||0;
+  if(f==='parecer'){ const m=String(r.parecer||'').match(/^(\d+)\/(\d{4})$/); return m ? m[2]+m[1].padStart(6,'0') : String(r.parecer||''); }
+  if(f==='nome' || f==='entrevNome' || f==='tecnico') return normNome(r[f]);
+  return r[f]??'';
+}
 function ordenar(lst) {
   return [...lst].sort((a,b)=>{
-    let va=a[sfld]??'', vb=b[sfld]??'';
-    if(sfld==='ordem'){va=+va;vb=+vb;}
+    const va=valOrd(a,sfld), vb=valOrd(b,sfld);
     if(va<vb) return sdir==='asc'?-1:1;
     if(va>vb) return sdir==='asc'?1:-1;
-    return 0;
+    return (+a.ordem||0)-(+b.ordem||0);
   });
 }
 function sort(f){
@@ -570,12 +706,12 @@ function sort(f){
 
 // ── STATS ────────────────────────────────────────────────
 function stats(filtered) {
-  document.getElementById('sTotal').textContent = db.length;
-  document.getElementById('sResp').textContent  = db.filter(x=>x.respondidoEm).length;
-  document.getElementById('sPend').textContent  = db.filter(x=>!x.respondidoEm).length;
-  document.getElementById('sReit').textContent  = db.filter(x=>x.reiteracao==='sim').length;
-  document.getElementById('sReinc').textContent = db.filter(x=>x.reincidencia==='sim').length;
-  document.getElementById('sView').textContent  = filtered.length;
+  $('sTotal').textContent  = db.length;
+  $('sEntrev').textContent = db.filter(x=>x.tipo==='entrevistador').length;
+  $('sRotina').textContent = db.filter(x=>x.tipo==='rotina').length;
+  $('sCom').textContent    = db.filter(x=>x.parecer).length;
+  $('sSem').textContent    = db.filter(x=>!x.parecer).length;
+  $('sView').textContent   = filtered.length;
 }
 
 // ── PAGINATOR ────────────────────────────────────────────
@@ -585,9 +721,9 @@ function renderPaginator(total, pp) {
   const pages = Math.max(1, Math.ceil(total/pp));
   if(pg>pages) pg=pages;
   const start=(pg-1)*pp+1, end=Math.min(pg*pp,total);
-  document.getElementById('pageInfo').textContent = total===0 ? '' : `${start}–${end} de ${total}`;
+  $('pageInfo').textContent = total===0 ? '' : `${start}–${end} de ${total}`;
 
-  const cont = document.getElementById('pageBtns');
+  const cont = $('pageBtns');
   if(pp>=999999){ cont.innerHTML=''; return; }
   let html = `<button onclick="goPage(${pg-1})" ${pg===1?'disabled':''}>‹</button>`;
 
@@ -605,114 +741,113 @@ function render() {
   const filtered = ordenar(filtrar());
   stats(filtered);
 
-  const pp = parseInt(document.getElementById('perPage').value)||25;
+  const pp = parseInt($('perPage').value)||25;
   renderPaginator(filtered.length, pp);
   const page = pp>=999999 ? filtered : filtered.slice((pg-1)*pp, pg*pp);
 
-  document.getElementById('cntLabel').textContent = `${filtered.length} registro${filtered.length!==1?'s':''}`;
+  $('cntLabel').textContent = `${filtered.length} caso${filtered.length!==1?'s':''}`;
 
-  ['ordem','dataRecebimento','canalRecebido','numSeiSigrc','nome','cpf','reiteracao','reincidencia','atribuidoPara','respondidoEm'].forEach(f=>{
-    const el=document.getElementById('si-'+f);
+  ['ordem','nome','cpf','dataExclusao','tipo','mesAno','base','entrevNome','parecer','tecnico'].forEach(f=>{
+    const el=$('si-'+f);
     if(el) el.textContent = sfld===f?(sdir==='asc'?' ▲':' ▼'):' ↕';
   });
 
-  const tbody = document.getElementById('tbody');
+  const tbody = $('tbody');
   if(page.length===0){
-    tbody.innerHTML=`<tr class="empty-row"><td colspan="11">${db.length===0?'Nenhum caso cadastrado. Clique em «Novo Caso» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
+    tbody.innerHTML=`<tr class="empty-row"><td colspan="11">${db.length===0?'Nenhum caso cadastrado. Clique em «Novo Caso» ou «Importar lista» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
     return;
   }
-  tbody.innerHTML = page.map((r,i)=>{
-    const reit = r.reiteracao==='sim'
-      ? `<span class="badge b-sim" title="Data:${fd(r.reitData)} | Ofício:${r.reitOficio||'—'}">⚠ Sim</span>`
-      : `<span class="badge b-nao">Não</span>`;
-    const reinc = r.reincidencia==='sim'
-      ? `<span class="badge b-sim">Sim</span>`
-      : `<span class="badge b-nao">Não</span>`;
-    const resp = r.respondidoEm
-      ? `<span class="badge b-resp">✓ ${fd(r.respondidoEm)}</span>`
-      : `<span class="badge b-pend">Pendente</span>`;
-    return `<tr class="${i%2?'even':''}">
+  tbody.innerHTML = page.map((r,i)=>`<tr class="${i%2?'even':''}">
       <td><span class="num">${String(r.ordem).padStart(3,'0')}</span></td>
-      <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td>
-      <td>${badgeCanal(r.canalRecebido)}</td>
-      <td class="mono" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.numSeiSigrc||''}">${r.numSeiSigrc||'—'}</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nome||''}">${r.nome||'—'}</td>
-      <td class="mono" style="white-space:nowrap">${r.cpf||'—'}</td>
-      <td>${reit}</td>
-      <td>${reinc}</td>
-      <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.atribuidoPara||''}">${r.atribuidoPara||'—'}</td>
-      <td style="white-space:nowrap">${resp}</td>
+      <td class="cut" title="${esc(r.nome)}">${esc(r.nome)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
+      <td style="white-space:nowrap">${fd(r.dataExclusao)}</td>
+      <td>${badgeTipo(r.tipo)}</td>
+      <td style="white-space:nowrap">${r.mesAno?fd(r.mesAno):'—'}</td>
+      <td>${badgeBase(r.base)}</td>
+      <td class="cut" title="${esc(r.entrevNome)}">${esc(r.entrevNome)||'—'}${r.entrevCpf?`<div class="sub mono">${esc(r.entrevCpf)}</div>`:''}</td>
+      <td class="mono" style="white-space:nowrap">${r.parecer?esc(r.parecer):'<span class="badge b-pend">Sem parecer</span>'}</td>
+      <td class="cut" title="${esc(r.tecnico)}">${esc(r.tecnico)||'—'}</td>
       <td class="no-print" style="white-space:nowrap">
-        <button class="btn btn-outline btn-sm" onclick="editar(${r.id})">Editar</button>
-        <button class="btn btn-danger btn-sm" onclick="pedirDel(${r.id})">Excluir</button>
+        <button class="btn btn-outline btn-sm" onclick="editar(${+r.id})">Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="pedirDel(${+r.id})">Excluir</button>
       </td>
-    </tr>`;
-  }).join('');
+    </tr>`).join('');
 }
 
 // ── MODAL ────────────────────────────────────────────────
-function abrirNovo(){
-  document.getElementById('mTitle').textContent='Novo Caso';
-  document.getElementById('bSalvar').textContent='Cadastrar';
-  document.getElementById('eId').value='';
-  ['fData','fSei','fRData','fROfc','fCpf','fAtrib','fResp'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('fNome').value='';
-  document.getElementById('fCanal2').value='MDS';
-  document.getElementById('fReinc2').value='nao';
-  document.querySelector('input[name=reit][value=nao]').checked=true;
-  document.getElementById('rSub').classList.add('hidden');
-  document.getElementById('mOverlay').classList.remove('hidden');
+const CAMPOS_FORM = ['fNome','fCpf','fData','fParecer','fTecnico','fENome','fECpf','fMes','fBase2','fRResp'];
+
+function limparErros(){
+  CAMPOS_FORM.forEach(id=>$(id).classList.remove('err'));
+  $('tipoBox').classList.remove('err');
 }
-function fecharModal(){ document.getElementById('mOverlay').classList.add('hidden'); }
-function toggleReit(){
-  const v=document.querySelector('input[name=reit]:checked').value;
-  document.getElementById('rSub').classList.toggle('hidden',v!=='sim');
+function abrirNovo(){
+  $('mTitle').textContent='Novo Caso';
+  $('bSalvar').textContent='Cadastrar';
+  $('eId').value='';
+  CAMPOS_FORM.forEach(id=>$(id).value='');
+  document.querySelectorAll('input[name=tipo]').forEach(r=>r.checked=false);
+  limparErros(); toggleTipo();
+  $('mOverlay').classList.remove('hidden');
+  $('fNome').focus();
+}
+function fecharModal(){ $('mOverlay').classList.add('hidden'); }
+function tipoMarcado(){ const r=document.querySelector('input[name=tipo]:checked'); return r ? r.value : ''; }
+function toggleTipo(){
+  const v = tipoMarcado();
+  $('subEntrev').classList.toggle('hidden', v!=='entrevistador');
+  $('subRotina').classList.toggle('hidden', v!=='rotina');
+  if(v) $('tipoBox').classList.remove('err');
 }
 function editar(id){
-  const r=db.find(x=>x.id===id); if(!r) return;
-  document.getElementById('mTitle').textContent='Editar Caso';
-  document.getElementById('bSalvar').textContent='Salvar Alterações';
-  document.getElementById('eId').value=id;
-  document.getElementById('fData').value=r.dataRecebimento||'';
-  const selCanal=document.getElementById('fCanal2');
-  if(r.canalRecebido && ![...selCanal.options].some(o=>o.value===r.canalRecebido)) selCanal.add(new Option(r.canalRecebido));
-  selCanal.value=r.canalRecebido||'MDS';
-  document.getElementById('fSei').value=r.numSeiSigrc||'';
-  document.getElementById('fNome').value=r.nome||'';
-  document.getElementById('fCpf').value=r.cpf||'';
-  document.querySelector(`input[name=reit][value="${r.reiteracao||'nao'}"]`).checked=true;
-  document.getElementById('rSub').classList.toggle('hidden',r.reiteracao!=='sim');
-  document.getElementById('fRData').value=r.reitData||'';
-  document.getElementById('fROfc').value=r.reitOficio||'';
-  document.getElementById('fReinc2').value=r.reincidencia==='sim'?'sim':'nao';
-  document.getElementById('fAtrib').value=r.atribuidoPara||'';
-  document.getElementById('fResp').value=r.respondidoEm||'';
-  document.getElementById('mOverlay').classList.remove('hidden');
+  const r=db.find(x=>+x.id===id); if(!r) return;
+  $('mTitle').textContent='Editar Caso';
+  $('bSalvar').textContent='Salvar Alterações';
+  $('eId').value=id;
+  $('fNome').value=r.nome||'';
+  $('fCpf').value=r.cpf||'';
+  $('fData').value=r.dataExclusao||'';
+  $('fParecer').value=r.parecer||'';
+  $('fTecnico').value=r.tecnico||'';
+  document.querySelectorAll('input[name=tipo]').forEach(x=>x.checked = x.value===r.tipo);
+  $('fENome').value = r.tipo==='entrevistador' ? (r.entrevNome||'') : '';
+  $('fECpf').value  = r.entrevCpf||'';
+  $('fRResp').value = r.tipo==='rotina' ? (r.entrevNome||'') : '';
+  $('fMes').value   = r.mesAno ? fd(r.mesAno) : '';
+  $('fBase2').value = r.base||'';
+  limparErros(); toggleTipo();
+  $('mOverlay').classList.remove('hidden');
 }
 async function salvar(){
-  const id=document.getElementById('eId').value;
-  const nome=document.getElementById('fNome').value.trim();
-  const data=document.getElementById('fData').value;
-  let ok=true;
-  ['fNome'].forEach(fid=>{ const el=document.getElementById(fid); el.classList.toggle('err',!el.value.trim()); if(!el.value.trim()) ok=false; });
-  if(!ok){ toast('⚠ Preencha os campos obrigatórios.'); return; }
-  const reit=document.querySelector('input[name=reit]:checked').value;
-  const reg={
-    dataRecebimento:data,
-    canalRecebido:document.getElementById('fCanal2').value,
-    numSeiSigrc:document.getElementById('fSei').value.trim(),
-    nome, cpf:document.getElementById('fCpf').value.trim(),
-    reiteracao:reit,
-    reincidencia:document.getElementById('fReinc2').value,
-    reitData:reit==='sim'?document.getElementById('fRData').value:'',
-    reitOficio:reit==='sim'?document.getElementById('fROfc').value.trim():'',
-    atribuidoPara:document.getElementById('fAtrib').value.trim(),
-    respondidoEm:document.getElementById('fResp').value,
+  limparErros();
+  const id = $('eId').value;
+  const nome = $('fNome').value.trim();
+  const tipo = tipoMarcado();
+  const par = parseParecer($('fParecer').value);
+  const mes = tipo==='rotina' ? parseMesAno($('fMes').value) : {v:''};
+  const erros = [];
+  if(!nome){ $('fNome').classList.add('err'); erros.push('Preencha o nome.'); }
+  if(!tipo){ $('tipoBox').classList.add('err'); erros.push('Escolha o tipo de monitoramento.'); }
+  if(par.erro){ $('fParecer').classList.add('err'); erros.push('N.º do parecer deve estar no formato XX/XXXX.'); }
+  if(mes.erro){ $('fMes').classList.add('err'); erros.push('Mês/ano deve estar no formato MM/AAAA.'); }
+  if(erros.length){ toast('⚠ '+erros.join(' '), 4000); return; }
+  const reg = {
+    nome,
+    cpf: $('fCpf').value.trim(),
+    dataExclusao: $('fData').value,
+    tipo,
+    entrevNome: (tipo==='entrevistador' ? $('fENome') : $('fRResp')).value.trim(),
+    entrevCpf: tipo==='entrevistador' ? $('fECpf').value.trim() : '',
+    mesAno: mes.v,
+    base: tipo==='rotina' ? $('fBase2').value : '',
+    parecer: par.v,
+    tecnico: $('fTecnico').value.trim(),
   };
   try {
     if(id){
       reg.id = +id;
-      const atual = db.find(x=>x.id===+id);
+      const atual = db.find(x=>+x.id===+id);
       reg.ordem = atual ? atual.ordem : nextOrd();
       await db_ref.child(id).set(reg);
       toast('✓ Caso atualizado.');
@@ -730,8 +865,8 @@ async function salvar(){
 }
 
 // ── DELETE ───────────────────────────────────────────────
-function pedirDel(id){ delTarget=id; document.getElementById('cOverlay').classList.remove('hidden'); }
-function fecharConfirm(){ delTarget=null; document.getElementById('cOverlay').classList.add('hidden'); }
+function pedirDel(id){ delTarget=id; $('cOverlay').classList.remove('hidden'); }
+function fecharConfirm(){ delTarget=null; $('cOverlay').classList.add('hidden'); }
 async function confirmarDel(){
   try {
     await db_ref.child(String(delTarget)).remove();
@@ -744,71 +879,56 @@ async function confirmarDel(){
   }
 }
 
-// ── IMPORTAÇÃO DE PLANILHA ───────────────────────────────
-// Lê um arquivo Excel/CSV, mostra uma prévia e ACRESCENTA os registros novos.
-// Nos registros já existentes, só pode marcar Reincidência = Sim (nunca apaga nada).
-let impLinhas = [], impInfo = '', impPlano = null;
-
-const semAcento = s => String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'');
-const chaveCol  = s => semAcento(s).toLowerCase().replace(/[^a-z0-9]/g,'');
-const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// ── IMPORTAÇÃO DE LISTA ──────────────────────────────────
+// Lê uma planilha Excel/CSV ou uma lista colada, mostra uma prévia e ACRESCENTA
+// os casos novos (nunca apaga nem altera os já cadastrados).
+let impBrutos = [], impLinhas = [];
 
 // Nome da coluna na planilha (sem acentos, espaços e símbolos) → campo do sistema
 const IMP_COLUNAS = {
-  canal:'canalRecebido', canalrecebido:'canalRecebido',
-  sigrcsei:'numSeiSigrc', seisigrc:'numSeiSigrc', sei:'numSeiSigrc', sigrc:'numSeiSigrc', nseisigrc:'numSeiSigrc',
-  nome:'nome',
-  cpf:'cpf',
-  datarecebimento:'dataRecebimento', dtrecebimento:'dataRecebimento',
-  dataresposta:'respondidoEm', respondidoem:'respondidoEm',
-  reincidencia:'reincidencia', reincidente:'reincidencia', reinscidencia:'reincidencia', reicidencia:'reincidencia',
-  tecnicor:'atribuidoPara', tecnico:'atribuidoPara', tecnica:'atribuidoPara', atribuidopara:'atribuidoPara', responsavel:'atribuidoPara',
+  nome:'nome', nomecompleto:'nome', beneficiario:'nome', nomebeneficiario:'nome', nomedobeneficiario:'nome',
+  cpf:'cpf', cpfbeneficiario:'cpf', cpfdobeneficiario:'cpf',
+  dataexclusao:'dataExclusao', datadaexclusao:'dataExclusao', dtexclusao:'dataExclusao', exclusao:'dataExclusao', dataexcl:'dataExclusao',
+  tipo:'tipo', tipomonitoramento:'tipo', tipodemonitoramento:'tipo', monitoramento:'tipo',
+  entrevistador:'entrevNome', nomeentrevistador:'entrevNome', nomedoentrevistador:'entrevNome', entrevistadorresponsavel:'entrevNome',
+  cpfentrevistador:'entrevCpf', cpfdoentrevistador:'entrevCpf',
+  mesano:'mesAno', mesanomonitoramento:'mesAno', mesanodomonitoramento:'mesAno', mes:'mesAno', competencia:'mesAno', referencia:'mesAno',
+  base:'base', basecadpbf:'base',
+  parecer:'parecer', nparecer:'parecer', ndoparecer:'parecer', noparecer:'parecer', nodoparecer:'parecer', numeroparecer:'parecer', numerodoparecer:'parecer',
+  tecnico:'tecnico', tecnica:'tecnico', tecnicoavaliador:'tecnico', tecnicaavaliadora:'tecnico', avaliador:'tecnico', tecnicor:'tecnico', responsavel:'tecnico',
 };
-const IMP_CANAIS = ['SEI','SIGRC','E-MAIL','MDS','Monitoramento interno','Presencial','Ministério Público','COMAS','Outro'];
+const MODELO_CAB = ['Nome','CPF','Data da Exclusão','Tipo de Monitoramento','Nome do Entrevistador','CPF do Entrevistador','Mês/Ano','Base','N.º do Parecer','Técnico Avaliador'];
 
-function impCanal(v){
-  v = String(v??'').trim();
-  if(!v) return 'Outro';
-  const k = chaveCol(v);
-  return IMP_CANAIS.find(c=>chaveCol(c)===k) || v;
-}
-function impSimNao(v){
-  const k = chaveCol(v);
-  if(!k || ['nao','n','0','false','no'].includes(k)) return {v:'nao'};
-  if(['sim','s','x','1','true','yes'].includes(k)) return {v:'sim'};
-  return {v:'nao', erro:`valor não reconhecido: "${v}" (use Sim ou Não)`};
-}
-function impCpf(v){
-  const orig = String(v??'').trim();
-  if(!orig) return {v:''};
-  let d = orig.replace(/\D/g,'');
-  // O Excel costuma apagar os zeros à esquerda do CPF quando a célula é numérica
-  if(d.length>=8 && d.length<11) d = d.padStart(11,'0');
-  if(d.length!==11) return {v:orig, aviso:'CPF com quantidade de dígitos diferente de 11'};
-  return {v:d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')};
-}
-function impData(v){
-  if(v===null || v===undefined || String(v).trim()==='') return {v:''};
-  let y,m,d;
-  if(typeof v==='number'){                       // data numérica do Excel
-    const p = XLSX.SSF.parse_date_code(v);
-    if(p){ y=p.y; m=p.m; d=p.d; }
-  } else {
-    const s = String(v).trim();
-    let r;
-    if((r = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))){ d=+r[1]; m=+r[2]; y=+r[3]; if(y<100) y+=2000; }
-    else if((r = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))){ y=+r[1]; m=+r[2]; d=+r[3]; }
-  }
-  const dt = y ? new Date(y, m-1, d) : null;
-  if(!dt || dt.getFullYear()!==y || dt.getMonth()!==m-1 || dt.getDate()!==d || y<1990 || y>2100)
-    return {v:'', erro:`data inválida: "${v}"`};
-  return {v:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
-}
-// Mesmo CPF (ou mesmo nome, se não houver CPF) + mesmo número SEI/SIGRC + mesma data de recebimento
-// = possível duplicado. Casos da mesma pessoa em datas diferentes são reincidências, não duplicados.
+// Mesma pessoa (CPF, ou nome se não houver CPF) + mesmo tipo + mesmo monitoramento
+// (mês/ano e base na rotina; entrevistador na apuração) = possível duplicado.
 function chaveDup(r){
-  const quem = r.cpf ? r.cpf.replace(/\D/g,'') : chaveCol(r.nome);
-  return quem ? `${quem}|${chaveCol(r.numSeiSigrc)}|${r.dataRecebimento||''}` : '';
+  const quem = soDig(r.cpf).length>=8 ? soDig(r.cpf) : normNome(r.nome);
+  if(!quem) return '';
+  const ref = r.tipo==='rotina' ? `${r.mesAno||''}|${r.base||''}` : (soDig(r.entrevCpf) || normNome(r.entrevNome));
+  return `${quem}|${r.tipo||''}|${ref}`;
+}
+
+function abrirImport(){
+  impBrutos = []; impLinhas = [];
+  $('impTxt').value = '';
+  ['pTipo','pData','pParecer','pTecnico','pENome','pECpf','pMes','pBase'].forEach(id=>{ $(id).value=''; $(id).classList.remove('err'); });
+  $('impPrev').classList.add('hidden');
+  const b = $('impBtn'); b.disabled = true; b.textContent = 'Importar';
+  $('iOverlay').classList.remove('hidden');
+}
+function fecharImport(){ impBrutos = []; impLinhas = []; $('iOverlay').classList.add('hidden'); }
+
+function baixarModelo(){
+  if(typeof XLSX==='undefined'){ toast('⚠ Não foi possível carregar o gerador de planilhas. Verifique a internet.'); return; }
+  const ws = XLSX.utils.aoa_to_sheet([
+    MODELO_CAB,
+    ['Maria da Silva','000.000.000-00','15/03/2025','Apuração entrevistador','João de Souza','000.000.000-00','','','01/2025','Ana Lima'],
+    ['José dos Santos','000.000.000-00','15/03/2025','Monitoramento de Rotina','Carla Dias','','03/2025','CAD','02/2025','Ana Lima'],
+  ]);
+  ws['!cols'] = MODELO_CAB.map(h=>({wch:Math.max(14,h.length+2)}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Casos');
+  XLSX.writeFile(wb, 'modelo-casos-suspeitos.xlsx');
 }
 
 function lerPlanilha(input){
@@ -827,13 +947,13 @@ function lerPlanilha(input){
         let txt;
         try { txt = new TextDecoder('utf-8', {fatal:true}).decode(e.target.result); }
         catch(_) { txt = new TextDecoder('windows-1252').decode(e.target.result); }
-        wb = XLSX.read(txt.replace(/^\uFEFF/,''), {type:'string', raw:true});
+        wb = XLSX.read(txt.replace(/^﻿/,''), {type:'string', raw:true});
       } else {
         wb = XLSX.read(e.target.result, {type:'array'});
       }
       const ws = wb.Sheets[wb.SheetNames[0]];
       const linhas = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
-      prepararImport(file.name, linhas);
+      prepararImport(`Arquivo <b>${esc(file.name)}</b>`, linhas, false);
     } catch(err) {
       console.error(err);
       toast('⚠ Não foi possível ler o arquivo. Use .xlsx, .xls ou .csv.');
@@ -842,173 +962,168 @@ function lerPlanilha(input){
   fr.readAsArrayBuffer(file);
 }
 
-function prepararImport(nomeArq, linhas){
+// Lista colada: um nome por linha, com ou sem CPF. Aceita linhas copiadas do Excel
+// (colunas separadas por tabulação), separadas por ";" ou "Nome - CPF".
+const RE_CPF = /^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/;
+function lerColado(){
+  const linhas = $('impTxt').value.split(/\r?\n/).filter(l=>l.trim()).map(l=>{
+    let c = (l.includes('\t') ? l.split('\t') : l.includes(';') ? l.split(';') : [l]).map(x=>x.trim());
+    if(c.length===1){
+      let m = c[0].match(/^(.*?)[\s,;–-]+(\d{3}\.?\d{3}\.?\d{3}-?\d{2})$/);
+      if(m) c = [m[1].trim(), m[2]];
+      else if((m = c[0].match(/^(\d{3}\.?\d{3}\.?\d{3}-?\d{2})[\s,;–-]+(.*)$/))) c = [m[2].trim(), m[1]];
+    }
+    return c;
+  });
+  if(!linhas.length){ toast('⚠ Cole pelo menos um nome na caixa de texto.'); return; }
+  const temCab = linhas[0].some(h=>IMP_COLUNAS[chaveCol(h)]==='nome');
+  if(!temCab){
+    // Lista simples: primeira coluna é o nome e a segunda, se houver, o CPF
+    linhas.forEach((c,i)=>{ if(RE_CPF.test(c[0]) && c[1] && !RE_CPF.test(c[1])) linhas[i] = [c[1], c[0], ...c.slice(2)]; });
+    linhas.unshift(['Nome','CPF']);
+  }
+  prepararImport('Lista colada', linhas, !temCab);
+}
+
+function prepararImport(origem, linhas, simples){
   const cab = (linhas[0]||[]).map(h=>IMP_COLUNAS[chaveCol(h)]||null);
-  const reconhecidas = (linhas[0]||[]).filter((h,i)=>cab[i]).map(h=>String(h).trim());
-  const ignoradas = (linhas[0]||[]).filter((h,i)=>!cab[i] && String(h).trim()).map(h=>String(h).trim());
   if(!cab.includes('nome')){
-    toast('⚠ A planilha precisa ter uma coluna "nome" na primeira linha.', 4500);
+    toast('⚠ A planilha precisa ter uma coluna "Nome" na primeira linha.', 4500);
     return;
   }
-  const existentes = new Set(db.map(chaveDup).filter(Boolean));
-  const noArquivo = new Set();
-  impLinhas = [];
+  const reconhecidas = (linhas[0]||[]).filter((h,i)=>cab[i]).map(h=>String(h).trim());
+  const ignoradas = (linhas[0]||[]).filter((h,i)=>!cab[i] && String(h).trim()).map(h=>String(h).trim());
+  impBrutos = [];
   linhas.slice(1).forEach((lin, i)=>{
     if(!lin.some(c=>String(c).trim()!=='')) return;   // linha em branco
     const bruto = {};
-    cab.forEach((campo, j)=>{ if(campo && bruto[campo]===undefined) bruto[campo] = lin[j]; });
+    cab.forEach((campo, j)=>{ if(campo && vazio(bruto[campo])) bruto[campo] = lin[j]; });
+    impBrutos.push({linha: simples ? i+1 : i+2, bruto});
+  });
+  $('impHelp').innerHTML =
+    `${origem}. ` + (simples
+      ? 'Lida como lista simples (nome e, se houver, CPF).'
+      : `Colunas reconhecidas: ${reconhecidas.map(h=>`<code>${esc(h)}</code>`).join(' ')}` +
+        (ignoradas.length ? `<br>Colunas ignoradas: ${ignoradas.map(h=>`<code>${esc(h)}</code>`).join(' ')}` : '')) +
+    `<br>Use os campos abaixo para preencher de uma vez o que for igual para todos (por exemplo, o mesmo tipo de monitoramento, mês/ano e base). `+
+    `Nada é gravado até você clicar em <b>Importar</b>; a importação só acrescenta casos novos.`;
+  $('impDup').checked = false;
+  $('impPrev').classList.remove('hidden');
+  montarImport();
+}
+
+function lerPadroes(){
+  const pad = {
+    tipo: $('pTipo').value, dataExclusao: $('pData').value,
+    tecnico: $('pTecnico').value.trim(), entrevNome: $('pENome').value.trim(),
+    entrevCpf: $('pECpf').value.trim(), base: $('pBase').value,
+  };
+  const par = parseParecer($('pParecer').value), mes = parseMesAno($('pMes').value);
+  $('pParecer').classList.toggle('err', !!par.erro);
+  $('pMes').classList.toggle('err', !!mes.erro);
+  if(!par.erro) { pad.parecer = par.v; if(par.v) $('pParecer').value = par.v; } else pad.parecer = '';
+  pad.mesAno = mes.erro ? '' : mes.v;
+  $('pECpfBox').style.display = pad.tipo==='rotina' ? 'none' : '';
+  return pad;
+}
+
+function montarImport(){
+  const pad = lerPadroes();
+  const existentes = new Set(db.map(chaveDup).filter(Boolean));
+  const noArquivo = new Set();
+  impLinhas = impBrutos.map(({linha, bruto})=>{
     const erros = [], avisos = [];
-    const dRec = impData(bruto.dataRecebimento), dResp = impData(bruto.respondidoEm), cpf = impCpf(bruto.cpf);
-    if(dRec.erro)  erros.push('Recebimento: '+dRec.erro);
-    if(dResp.erro) erros.push('Resposta: '+dResp.erro);
-    if(cpf.aviso)  avisos.push(cpf.aviso);
-    const reinc = impSimNao(bruto.reincidencia);
-    if(reinc.erro) erros.push('Reincidência: '+reinc.erro);
+    const campo = (nome, parse, padrao) => {
+      if(vazio(bruto[nome])) return padrao;
+      const r = parse(bruto[nome]);
+      if(r.erro) erros.push(r.erro);
+      if(r.aviso) avisos.push(r.aviso);
+      return r.v;
+    };
+    const tipo = campo('tipo', parseTipo, pad.tipo);
     const reg = {
-      dataRecebimento: dRec.v,
-      canalRecebido: impCanal(bruto.canalRecebido),
-      numSeiSigrc: String(bruto.numSeiSigrc??'').trim(),
       nome: String(bruto.nome??'').trim(),
-      cpf: cpf.v,
-      reiteracao:'nao', reitData:'', reitOficio:'',
-      reincidencia: reinc.v,
-      atribuidoPara: String(bruto.atribuidoPara??'').trim(),
-      respondidoEm: dResp.v,
+      cpf: campo('cpf', parseCpf, ''),
+      dataExclusao: campo('dataExclusao', parseData, pad.dataExclusao),
+      tipo,
+      entrevNome: String(bruto.entrevNome??'').trim() || pad.entrevNome,
+      entrevCpf: tipo==='rotina' ? '' : campo('entrevCpf', parseCpf, pad.entrevCpf),
+      mesAno: tipo==='entrevistador' ? '' : campo('mesAno', parseMesAno, pad.mesAno),
+      base: tipo==='entrevistador' ? '' : campo('base', parseBase, pad.base),
+      parecer: campo('parecer', parseParecer, pad.parecer),
+      tecnico: String(bruto.tecnico??'').trim() || pad.tecnico,
     };
     if(!reg.nome) erros.push('nome em branco');
+    if(!reg.tipo && !erros.length) avisos.push('tipo de monitoramento não informado');
     let dup = false;
     const k = chaveDup(reg);
     if(!erros.length && k){
-      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesma pessoa, mesmo SEI e mesma data)'); }
-      else if(noArquivo.has(k)){ dup = true; avisos.push('repetido nesta planilha'); }
+      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesma pessoa e mesmo monitoramento)'); }
+      else if(noArquivo.has(k)){ dup = true; avisos.push('repetido nesta lista'); }
       noArquivo.add(k);
     }
-    impLinhas.push({linha:i+2, reg, erros, avisos, dup});
+    return {linha, reg, erros, avisos, dup};
   });
-
-  impInfo =
-    `Arquivo <b>${esc(nomeArq)}</b>. Colunas reconhecidas: ${reconhecidas.map(h=>`<code>${esc(h)}</code>`).join(' ')}`+
-    (ignoradas.length ? `<br>Colunas ignoradas: ${ignoradas.map(h=>`<code>${esc(h)}</code>`).join(' ')}` : '')+
-    `<br>Nada é gravado até você clicar em <b>Importar</b>. A importação acrescenta os novos casos; nos registros já cadastrados, ela só pode marcar <b>Reincidência = Sim</b> (nunca apaga nem altera outros campos).`;
   const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
-  document.getElementById('impDupOpt').style.display = dup ? '' : 'none';
-  document.getElementById('impDup').checked = false;
+  $('impDupOpt').style.display = dup ? '' : 'none';
+  if(!dup) $('impDup').checked = false;
   renderImport();
-  document.getElementById('iOverlay').classList.remove('hidden');
 }
 
-// ── REINCIDÊNCIA AUTOMÁTICA ──────────────────────────────
-// A mesma pessoa é reconhecida pelo CPF quando os dois registros têm CPF;
-// se um deles não tiver CPF, pelo nome (sem diferenciar acentos/maiúsculas).
-// Em cada pessoa com mais de um caso, todos os casos depois do primeiro
-// (pela data de recebimento) ficam com Reincidência = Sim — inclusive o mais recente.
-const normNome = s => semAcento(s).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
-const soDig = s => String(s??'').replace(/\D/g,'');
-
-function calcReincidencias(novas){
-  const maxOrd = db.length ? Math.max(...db.map(r=>+r.ordem||0)) : 0;
-  const itens = [
-    ...db.map(r=>({r, existente:true, seq:+r.ordem||0})),
-    ...novas.map((l,i)=>({r:l.reg, linha:l, existente:false, seq:maxOrd+1+i})),
-  ];
-  const pai = itens.map((_,i)=>i);
-  const raiz = i => { while(pai[i]!==i){ pai[i]=pai[pai[i]]; i=pai[i]; } return i; };
-  const unir = (a,b) => { a=raiz(a); b=raiz(b); if(a!==b) pai[b]=a; };
-  const porCpf = {}, porNome = {};
-  itens.forEach((it,i)=>{
-    const c = soDig(it.r.cpf), n = normNome(it.r.nome);
-    if(c.length>=8) (porCpf[c] ||= []).push(i);
-    if(n) (porNome[n] ||= []).push(i);
-  });
-  Object.values(porCpf).forEach(g=>g.forEach(i=>unir(g[0],i)));
-  Object.values(porNome).forEach(g=>{
-    const semCpf = g.filter(i=>soDig(itens[i].r.cpf).length<8);
-    semCpf.forEach(i=>g.forEach(j=>unir(i,j)));
-  });
-  const grupos = {};
-  itens.forEach((it,i)=>(grupos[raiz(i)] ||= []).push(it));
-  const novasSim = new Map(), existentesSim = [];
-  Object.values(grupos).forEach(g=>{
-    if(g.length<2 || g.every(it=>it.existente)) return;   // só pessoas que aparecem na planilha
-    g.sort((a,b)=> (a.r.dataRecebimento||'').localeCompare(b.r.dataRecebimento||'') || a.seq-b.seq);
-    const primeiro = g[0];
-    const ref = primeiro.existente ? `do registro N.º ${String(primeiro.r.ordem).padStart(3,'0')}` : `da linha ${primeiro.linha.linha} da planilha`;
-    g.slice(1).forEach(it=>{
-      if(it.existente){ if(it.r.reincidencia!=='sim') existentesSim.push(it.r); }
-      else novasSim.set(it.linha, `reincidência: mesma pessoa ${ref}`);
-    });
-  });
-  return {novasSim, existentesSim};
+function linhasParaImportar(){
+  const comDup = $('impDup').checked;
+  return impLinhas.filter(l=>!l.erros.length && (comDup || !l.dup));
 }
 
 function renderImport(){
   const lst = linhasParaImportar();
-  const {novasSim, existentesSim} = calcReincidencias(lst);
-  impPlano = {lst, novasSim, existentesSim};
-  const ok = impLinhas.filter(l=>!l.erros.length && !l.dup).length;
+  const ok  = impLinhas.filter(l=>!l.erros.length && !l.dup).length;
   const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
   const err = impLinhas.filter(l=>l.erros.length).length;
-  const nReinc = lst.filter(l=>l.reg.reincidencia==='sim' || novasSim.has(l)).length;
-  document.getElementById('impHelp').innerHTML = impInfo;
-  document.getElementById('impSum').innerHTML =
+  const semTipo = lst.filter(l=>!l.reg.tipo).length;
+  $('impSum').innerHTML =
     `<span class="badge b-resp">✓ ${ok} novo${ok!==1?'s':''}</span>`+
     `<span class="badge b-pend">⚠ ${dup} possíve${dup!==1?'is':'l'} duplicado${dup!==1?'s':''}</span>`+
     `<span class="badge b-sim">✕ ${err} com erro (não ser${err!==1?'ão':'á'} importado${err!==1?'s':''})</span>`+
-    `<span class="badge b-mds">↻ ${nReinc} reincidência${nReinc!==1?'s':''} na planilha</span>`+
-    (existentesSim.length ? `<span class="badge b-mds">↻ ${existentesSim.length} registro${existentesSim.length!==1?'s':''} já cadastrado${existentesSim.length!==1?'s':''} passa${existentesSim.length!==1?'m':''} a Reincidência = Sim</span>` : '');
-  document.getElementById('impReinc').innerHTML = existentesSim.length
-    ? `<b>Registros já cadastrados que serão marcados com Reincidência = Sim</b> (são mais recentes que um caso da mesma pessoa na planilha):<br>`+
-      existentesSim.map(r=>`N.º ${String(r.ordem).padStart(3,'0')} — ${esc(r.nome)} (${fd(r.dataRecebimento)})`).join('<br>')
-    : '';
-  document.getElementById('impBody').innerHTML = impLinhas.length ? impLinhas.map(l=>{
+    (semTipo ? `<span class="badge b-outro">${semTipo} sem tipo de monitoramento</span>` : '');
+  $('impBody').innerHTML = impLinhas.length ? impLinhas.map(l=>{
     const r = l.reg;
-    const vai = lst.includes(l);
     const sit = l.erros.length ? '<span class="badge b-sim">Erro</span>'
               : l.dup ? '<span class="badge b-pend">Duplicado?</span>'
               : '<span class="badge b-resp">Novo</span>';
-    const msgs = [...l.erros, ...l.avisos];
-    if(vai && novasSim.has(l)) msgs.push(novasSim.get(l));
-    const reinc = vai && (r.reincidencia==='sim' || novasSim.has(l));
+    const msgs = (l.erros.length ? `<div class="imp-msg">${l.erros.map(esc).join('<br>')}</div>` : '') +
+                 (l.avisos.length ? `<div class="imp-msg av">${l.avisos.map(esc).join('<br>')}</div>` : '');
     return `<tr class="${l.erros.length?'r-err':l.dup?'r-dup':''}">
-      <td>${l.linha}</td><td>${sit}${msgs.length?`<div class="imp-msg">${msgs.map(esc).join('<br>')}</div>`:''}</td>
-      <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td><td>${esc(r.canalRecebido)}</td>
-      <td class="mono">${esc(r.numSeiSigrc)||'—'}</td><td>${esc(r.nome)||'—'}</td>
+      <td>${l.linha}</td><td>${sit}${msgs}</td>
+      <td>${esc(r.nome)||'—'}</td>
       <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
-      <td>${reinc?'<span class="badge b-sim">Sim</span>':(vai?'Não':'—')}</td><td>${esc(r.atribuidoPara)||'—'}</td>
-      <td style="white-space:nowrap">${fd(r.respondidoEm)}</td></tr>`;
-  }).join('') : '<tr class="empty-row"><td colspan="10">A planilha não tem linhas com dados.</td></tr>';
+      <td style="white-space:nowrap">${fd(r.dataExclusao)}</td>
+      <td>${badgeTipo(r.tipo)}</td>
+      <td style="white-space:nowrap">${r.mesAno?fd(r.mesAno):'—'}</td>
+      <td>${badgeBase(r.base)}</td>
+      <td>${esc(r.entrevNome)||'—'}${r.entrevCpf?`<div class="sub mono">${esc(r.entrevCpf)}</div>`:''}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.parecer)||'—'}</td>
+      <td>${esc(r.tecnico)||'—'}</td></tr>`;
+  }).join('') : '<tr class="empty-row"><td colspan="11">A lista não tem linhas com dados.</td></tr>';
   const n = lst.length;
-  const b = document.getElementById('impBtn');
-  b.textContent = n ? `Importar ${n} registro${n!==1?'s':''}` : 'Nada para importar';
+  const b = $('impBtn');
+  b.textContent = n ? `Importar ${n} caso${n!==1?'s':''}` : 'Nada para importar';
   b.disabled = !n;
 }
 
-function linhasParaImportar(){
-  const comDup = document.getElementById('impDup').checked;
-  return impLinhas.filter(l=>!l.erros.length && (comDup || !l.dup));
-}
-function fecharImport(){ impLinhas = []; impPlano = null; document.getElementById('iOverlay').classList.add('hidden'); }
-
 async function confirmarImport(){
-  if(!impPlano || !impPlano.lst.length) return;
-  const {lst, novasSim, existentesSim} = impPlano;
-  const b = document.getElementById('impBtn');
+  const lst = linhasParaImportar();
+  if(!lst.length) return;
+  const b = $('impBtn');
   b.disabled = true; b.textContent = 'Importando…';
   let id = nextId(), ordem = nextOrd();
-  const mudancas = {};
-  lst.forEach(l=>{
-    const reg = {...l.reg, id, ordem};
-    if(novasSim.has(l)) reg.reincidencia = 'sim';
-    mudancas[String(id)] = reg; id++; ordem++;
-  });
-  // Nos registros já cadastrados, só o campo reincidencia é alterado
-  existentesSim.forEach(r=>{ mudancas[`${r.id}/reincidencia`] = 'sim'; });
+  const novos = {};
+  lst.forEach(l=>{ novos[String(id)] = {...l.reg, id, ordem}; id++; ordem++; });
   try {
     // update() grava tudo de uma vez (ou nada, se falhar)
-    await db_ref.update(mudancas);
+    await db_ref.update(novos);
     fecharImport();
-    toast(`✓ ${lst.length} registro${lst.length!==1?'s':''} importado${lst.length!==1?'s':''}`+
-      (existentesSim.length ? ` e ${existentesSim.length} marcado${existentesSim.length!==1?'s':''} como reincidência.` : '.'), 4500);
+    toast(`✓ ${lst.length} caso${lst.length!==1?'s':''} importado${lst.length!==1?'s':''}.`, 4500);
   } catch(e) {
     console.error(e);
     toast('⚠ Erro ao importar. Nada foi gravado. Verifique sua conexão.', 4500);
@@ -1019,17 +1134,16 @@ async function confirmarImport(){
 // ── PRINT ────────────────────────────────────────────────
 function imprimir(){
   const f=ordenar(filtrar());
-  document.getElementById('ph').innerHTML=`
+  $('ph').innerHTML=`
     <table style="width:100%;border:none;margin-bottom:8px"><tr>
       <td style="border:none;padding:0"><div style="font-size:20px;font-weight:700;color:#1a4f8a">CONTROLE DE CASOS SUSPEITOS</div>
-        <div style="font-size:11px;color:#555;margin-top:2px">Gerado em: ${new Date().toLocaleString('pt-BR')} | Total exibido: ${f.length} registros</div></td>
+        <div style="font-size:11px;color:#555;margin-top:2px">Gerado em: ${new Date().toLocaleString('pt-BR')} | Total exibido: ${f.length} casos</div></td>
     </tr></table>`;
   window.print();
 }
 
 // ── INIT ─────────────────────────────────────────────────
-document.getElementById('perPage').value = '25';
-document.querySelectorAll('input[name=reit]').forEach(r=>r.addEventListener('change',toggleReit));
+$('perPage').value = '25';
 </script>
 </body>
 </html>
