@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Controle de Casos Suspeitos</title>
+
+<!-- Firebase (compat SDK via CDN, sem necessidade de build/npm) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
+
+<!-- SheetJS: leitura de planilhas Excel/CSV para a importação em lote -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --azul:#1a4f8a; --azul2:#2567b0; --azul-bg:#e8f0f9;
+    --verde:#2e7d32; --verde-bg:#e8f5e9;
+    --laranja:#b45309; --laranja-bg:#fef3c7;
+    --vermelho:#991b1b; --vermelho-bg:#fee2e2;
+    --roxo:#7c3aed;
+    --c1:#f4f5f7; --c2:#e9eaec; --c3:#b0b3ba; --c4:#6b7280;
+    --texto:#1a1d23; --borda:#d1d5db; --branco:#ffffff;
+    --r:8px;
+  }
+  body { font-family:'Segoe UI',system-ui,sans-serif; font-size:14px; color:var(--texto); background:var(--c1); min-height:100vh; }
+
+  /* LOADER */
+  #loader {
+    position:fixed; inset:0; background:var(--azul);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    z-index:999; color:#fff; font-size:15px;
+  }
+  #loader .spin {
+    width:48px; height:48px; border:4px solid rgba(255,255,255,.3);
+    border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #loader.hidden { display:none; }
+
+  /* CONN STATUS */
+  #connStatus {
+    position:fixed; bottom:16px; right:16px; z-index:998;
+    padding:6px 14px; border-radius:20px; font-size:12px; font-weight:600;
+    display:flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(0,0,0,.15);
+    transition:.2s;
+  }
+  #connStatus.online { background:var(--verde-bg); color:var(--verde); border:1px solid #a7f3d0; }
+  #connStatus.offline { background:var(--vermelho-bg); color:var(--vermelho); border:1px solid #fca5a5; }
+  .dot { width:8px; height:8px; border-radius:50%; background:currentColor; }
+  .dot.pulse { animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* HEADER */
+  header {
+    background:var(--azul); color:#fff; padding:0 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    height:60px; position:sticky; top:0; z-index:50;
+    box-shadow:0 2px 6px rgba(0,0,0,.18);
+  }
+  .hl { display:flex; align-items:center; gap:14px; }
+  .ht { font-size:17px; font-weight:600; letter-spacing:.3px; }
+  .hs { font-size:11px; opacity:.7; letter-spacing:.6px; text-transform:uppercase; margin-top:2px; }
+  .btn-print {
+    background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35);
+    color:#fff; border-radius:7px; padding:7px 16px; font-size:13px; cursor:pointer;
+    display:flex; align-items:center; gap:7px; transition:.15s;
+  }
+  .btn-print:hover { background:rgba(255,255,255,.28); }
+
+  /* CONTAINER */
+  .container { max-width:1500px; margin:0 auto; padding:24px 24px 40px; }
+
+  /* STATS */
+  .sg { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
+  .sc {
+    background:var(--branco); border:1px solid var(--borda);
+    border-radius:var(--r); padding:16px 18px; border-left:4px solid;
+  }
+  .sc.total { border-left-color:var(--azul); }
+  .sc.resp  { border-left-color:var(--verde); }
+  .sc.pend  { border-left-color:var(--laranja); }
+  .sc.reit  { border-left-color:var(--vermelho); }
+  .sc.roxo  { border-left-color:var(--roxo); }
+  .sl { font-size:11px; color:var(--c4); font-weight:500; text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
+  .sv { font-size:28px; font-weight:700; line-height:1; }
+  .sc.total .sv { color:var(--azul); }
+  .sc.resp  .sv { color:var(--verde); }
+  .sc.pend  .sv { color:var(--laranja); }
+  .sc.reit  .sv { color:var(--vermelho); }
+  .sc.roxo  .sv { color:var(--roxo); }
+
+  /* TOOLBAR */
+  .toolbar {
+    display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    background:var(--branco); border:1px solid var(--borda);
+    border-radius:var(--r); padding:12px 16px; margin-bottom:16px;
+  }
+  .toolbar input, .toolbar select {
+    border:1px solid var(--borda); border-radius:6px; padding:7px 11px;
+    font-size:13px; color:var(--texto); background:var(--c1); outline:none; transition:.15s;
+  }
+  .toolbar input:focus, .toolbar select:focus { border-color:var(--azul2); background:#fff; }
+  .toolbar input[type=text] { flex:1 1 220px; min-width:160px; }
+  .tr { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .btn {
+    display:inline-flex; align-items:center; gap:6px;
+    border-radius:7px; padding:8px 16px; font-size:13px; font-weight:500; cursor:pointer; border:none; transition:.15s;
+  }
+  .btn-primary { background:var(--azul); color:#fff; }
+  .btn-primary:hover { background:var(--azul2); }
+  .btn-outline { background:#fff; color:var(--c4); border:1px solid var(--borda); }
+  .btn-outline:hover { border-color:var(--c3); color:var(--texto); }
+  .btn-sm { padding:4px 10px; font-size:11.5px; }
+  .btn-danger { background:var(--vermelho-bg); color:var(--vermelho); border:1px solid #fca5a5; }
+  .btn-danger:hover { background:#fecaca; }
+
+  /* TABLE */
+  .tw { background:var(--branco); border:1px solid var(--borda); border-radius:var(--r); overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .ts { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead tr { background:var(--azul); color:#fff; }
+  thead th {
+    padding:11px 10px; text-align:left; font-weight:600; font-size:11px;
+    letter-spacing:.4px; text-transform:uppercase; white-space:nowrap;
+    cursor:pointer; user-select:none; border-right:1px solid rgba(255,255,255,.12);
+  }
+  thead th:last-child { border-right:none; }
+  thead th:hover { background:var(--azul2); }
+  tbody tr { border-bottom:1px solid var(--c2); transition:.1s; }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover { background:var(--azul-bg); }
+  tbody tr.even { background:var(--c1); }
+  tbody tr.even:hover { background:var(--azul-bg); }
+  td { padding:9px 10px; vertical-align:middle; }
+  .empty-row td { text-align:center; padding:48px; color:var(--c4); }
+  .cut { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sub { font-size:11px; color:var(--c4); margin-top:2px; }
+
+  /* BADGES */
+  .badge {
+    display:inline-block; padding:2px 8px; border-radius:5px;
+    font-size:10.5px; font-weight:700; letter-spacing:.3px; white-space:nowrap;
+  }
+  .b-sei    { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+  .b-sigrc  { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+  .b-mds    { background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; }
+  .b-mon    { background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
+  .b-outro  { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
+  .b-sim    { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+  .b-resp   { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+  .b-pend   { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+  .num { font-weight:700; color:var(--azul); font-size:13px; }
+  .mono { font-family:'Courier New',monospace; font-size:11.5px; }
+
+  /* PAGINAÇÃO */
+  .pagination {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; border-top:1px solid var(--c2);
+    font-size:13px; color:var(--c4); flex-wrap:wrap; gap:8px;
+  }
+  .page-btns { display:flex; gap:4px; }
+  .page-btns button {
+    width:32px; height:32px; border-radius:6px; border:1px solid var(--borda);
+    background:#fff; font-size:13px; cursor:pointer; transition:.1s;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .page-btns button:hover { border-color:var(--azul2); color:var(--azul); }
+  .page-btns button.active { background:var(--azul); color:#fff; border-color:var(--azul); font-weight:700; }
+  .page-btns button:disabled { opacity:.35; cursor:default; }
+  .per-page { display:flex; align-items:center; gap:8px; }
+  .per-page select { border:1px solid var(--borda); border-radius:6px; padding:4px 8px; font-size:13px; }
+
+  /* MODAL */
+  .overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:2rem 1rem; overflow-y:auto; }
+  .overlay.hidden { display:none; }
+  .modal { background:#fff; border-radius:12px; width:100%; max-width:720px; box-shadow:0 20px 60px rgba(0,0,0,.2); animation:sI .2s ease; }
+  @keyframes sI { from{transform:translateY(-16px);opacity:0} to{transform:none;opacity:1} }
+  .mh { padding:18px 22px; border-bottom:1px solid var(--borda); display:flex; align-items:center; justify-content:space-between; background:var(--azul); border-radius:12px 12px 0 0; color:#fff; }
+  .mh h2 { font-size:16px; font-weight:600; }
+  .mc { background:rgba(255,255,255,.2); border:none; color:#fff; width:30px; height:30px; border-radius:50%; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:.15s; }
+  .mc:hover { background:rgba(255,255,255,.35); }
+  .mb { padding:20px 22px; display:flex; flex-direction:column; gap:14px; }
+  .mf { padding:14px 22px; border-top:1px solid var(--borda); display:flex; justify-content:flex-end; gap:10px; background:var(--c1); border-radius:0 0 12px 12px; }
+  .fr { display:grid; gap:12px; }
+  .fr.c2 { grid-template-columns:1fr 1fr; }
+  .fr.c3 { grid-template-columns:1fr 1fr 1fr; }
+  .fr.c4 { grid-template-columns:repeat(4,1fr); }
+  .fi { display:flex; flex-direction:column; gap:5px; }
+  .fi label { font-size:11.5px; font-weight:600; color:var(--c4); text-transform:uppercase; letter-spacing:.4px; }
+  .fi input, .fi select, .fi textarea { border:1px solid var(--borda); border-radius:6px; padding:8px 11px; font-size:13px; color:var(--texto); outline:none; transition:.15s; font-family:inherit; background:#fff; }
+  .fi input:focus, .fi select:focus, .fi textarea:focus { border-color:var(--azul2); box-shadow:0 0 0 3px rgba(37,103,176,.12); }
+  .fi input.err, .rbox.err { border-color:#ef4444; }
+  .rbox { border:1px solid var(--borda); border-radius:8px; padding:14px; background:var(--c1); }
+  .rbox legend { font-size:11.5px; font-weight:600; color:var(--c4); text-transform:uppercase; letter-spacing:.4px; margin-bottom:10px; }
+  .rg { display:flex; gap:20px; flex-wrap:wrap; }
+  .rg label { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; }
+  .rs { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+  .rs.r3 { grid-template-columns:1fr 1fr 1.6fr; }
+  .rs.hidden { display:none; }
+
+  /* CONFIRM */
+  .cbox { background:#fff; border-radius:10px; padding:28px; max-width:380px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.2); text-align:center; }
+  .ci { font-size:40px; margin-bottom:12px; }
+  .cbox h3 { font-size:17px; margin-bottom:8px; }
+  .cbox p { color:var(--c4); font-size:13px; margin-bottom:20px; line-height:1.6; }
+  .cb { display:flex; gap:10px; justify-content:center; }
+
+  /* TOAST */
+  #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--texto); color:#fff; padding:11px 22px; border-radius:8px; font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,.2); opacity:0; transition:.25s; pointer-events:none; z-index:999; max-width:calc(100vw - 32px); text-align:center; }
+  #toast.show { opacity:1; }
+
+  /* PRINT */
+  @media print {
+    * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
+    body { background:#fff; font-size:11px; }
+    header,.toolbar,.sg,.no-print,.pagination,#connStatus { display:none!important; }
+    .container { padding:0; max-width:100%; }
+    .tw { box-shadow:none; border:1px solid #ccc; }
+    .ph { display:block!important; margin-bottom:16px; padding-bottom:12px; border-bottom:2px solid var(--azul); }
+    .ts { overflow:visible; }
+    table { font-size:9.5px; page-break-inside:auto; }
+    thead tr { background:var(--azul)!important; }
+    thead th { padding:6px; font-size:9px; }
+    td { padding:5px 6px; }
+    .cut { max-width:none; white-space:normal; }
+    tbody tr { page-break-inside:avoid; }
+    .badge { padding:1px 5px; font-size:8.5px; }
+  }
+  .ph { display:none; }
+
+  /* IMPORTAÇÃO */
+  .modal.wide { max-width:1200px; }
+  .imp-help { font-size:12.5px; color:var(--c4); line-height:1.6; }
+  .imp-help code { background:var(--c2); padding:1px 5px; border-radius:4px; font-size:11.5px; color:var(--texto); }
+  .imp-entrada { display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start; }
+  .imp-entrada .ou { display:flex; flex-direction:column; gap:8px; }
+  .imp-entrada textarea { width:100%; min-height:110px; resize:vertical; font-size:12.5px; }
+  .imp-sum { display:flex; gap:10px; flex-wrap:wrap; }
+  .imp-sum .badge { font-size:12px; padding:5px 10px; }
+  .imp-tw { max-height:46vh; overflow:auto; border:1px solid var(--borda); border-radius:8px; }
+  .imp-tw table { font-size:12px; }
+  .imp-tw thead th { position:sticky; top:0; background:var(--azul); cursor:default; }
+  .imp-tw tr.r-err  { background:var(--vermelho-bg); }
+  .imp-tw tr.r-dup  { background:var(--laranja-bg); }
+  .imp-msg { font-size:11px; color:var(--vermelho); }
+  .imp-msg.av { color:var(--laranja); }
+  .imp-opt { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .imp-prev { display:flex; flex-direction:column; gap:14px; }
+  .hidden, .imp-prev.hidden { display:none; }
+
+  /* CELULAR */
+  @media (max-width:700px) {
+    header { padding:0 16px; }
+    .container { padding:16px 16px 40px; }
+    .fr.c2, .fr.c3, .fr.c4, .rs, .rs.r3, .imp-entrada { grid-template-columns:1fr; }
+    .tr { margin-left:0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="spin"></div>
+  <span>Conectando ao banco de dados…</span>
+</div>
+
+<!-- STATUS DE CONEXÃO -->
+<div id="connStatus" class="offline no-print">
+  <span class="dot pulse"></span>
+  <span id="connText">Conectando…</span>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="hl">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill="rgba(255,255,255,0.18)"/>
+      <path d="M7 9h14M7 14h10M7 19h8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <div><div class="ht">Controle de Casos Suspeitos</div><div class="hs">Sistema de Gestão de Casos</div></div>
+  </div>
+  <button class="btn-print" onclick="imprimir()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      <rect x="6" y="14" width="12" height="8"/>
+    </svg>
+    Imprimir Relatório
+  </button>
+</header>
+
+<!-- MAIN -->
+<div class="container">
+  <div class="ph" id="ph"></div>
+
+  <!-- STATS -->
+  <div class="sg no-print">
+    <div class="sc total"><div class="sl">Total de Casos</div><div class="sv" id="sTotal">–</div></div>
+    <div class="sc reit" ><div class="sl">Apuração Entrevistador</div><div class="sv" id="sEntrev">–</div></div>
+    <div class="sc pend" ><div class="sl">Monitoramento de Rotina</div><div class="sv" id="sRotina">–</div></div>
+    <div class="sc resp" ><div class="sl">Com Parecer</div><div class="sv" id="sCom">–</div></div>
+    <div class="sc reit" ><div class="sl">Sem Parecer</div><div class="sv" id="sSem">–</div></div>
+    <div class="sc roxo" ><div class="sl">Exibindo</div><div class="sv" id="sView">–</div></div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar no-print">
+    <input type="text" id="busca" placeholder="🔍  Buscar por nome, CPF, parecer, entrevistador, técnico…" oninput="goPage(1)">
+    <select id="fTipo" onchange="goPage(1)">
+      <option value="">Todos os tipos</option>
+      <option value="entrevistador">Apuração entrevistador</option>
+      <option value="rotina">Monitoramento de Rotina</option>
+    </select>
+    <select id="fBase" onchange="goPage(1)">
+      <option value="">Todas as bases</option>
+      <option>CAD</option><option>PBF</option>
+    </select>
+    <select id="fComParecer" onchange="goPage(1)">
+      <option value="">Com/sem parecer</option>
+      <option value="com">Com parecer</option>
+      <option value="sem">Sem parecer</option>
+    </select>
+    <div class="tr">
+      <span id="cntLabel" style="font-size:12px;color:var(--c4)"></span>
+      <button class="btn btn-outline" onclick="abrirImport()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><path d="M12 3v12"/></svg>
+        Importar lista
+      </button>
+      <button class="btn btn-primary" onclick="abrirNovo()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Novo Caso
+      </button>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="tw">
+    <div class="ts">
+      <table id="tbl">
+        <thead><tr>
+          <th onclick="sort('ordem')">N. Ordem<span id="si-ordem"> ↕</span></th>
+          <th onclick="sort('nome')">Nome<span id="si-nome"> ↕</span></th>
+          <th onclick="sort('cpf')">CPF<span id="si-cpf"> ↕</span></th>
+          <th onclick="sort('dataExclusao')">Dt. Exclusão<span id="si-dataExclusao"> ↕</span></th>
+          <th onclick="sort('tipo')">Tipo de Monitoramento<span id="si-tipo"> ↕</span></th>
+          <th onclick="sort('mesAno')">Mês/Ano<span id="si-mesAno"> ↕</span></th>
+          <th onclick="sort('base')">Base<span id="si-base"> ↕</span></th>
+          <th onclick="sort('entrevNome')">Entrevistador<span id="si-entrevNome"> ↕</span></th>
+          <th onclick="sort('parecer')">N.º Parecer<span id="si-parecer"> ↕</span></th>
+          <th onclick="sort('tecnico')">Técnico Avaliador<span id="si-tecnico"> ↕</span></th>
+          <th class="no-print">Ações</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <!-- PAGINAÇÃO -->
+    <div class="pagination no-print">
+      <div class="per-page">
+        Casos por página:
+        <select id="perPage" onchange="goPage(1)">
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="999999">Todos</option>
+        </select>
+      </div>
+      <div id="pageInfo" style="font-size:12px"></div>
+      <div class="page-btns" id="pageBtns"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CADASTRO/EDIÇÃO -->
+<div class="overlay hidden" id="mOverlay">
+  <div class="modal">
+    <div class="mh"><h2 id="mTitle">Novo Caso</h2><button class="mc" onclick="fecharModal()">×</button></div>
+    <div class="mb">
+      <input type="hidden" id="eId">
+      <div class="fr c2">
+        <div class="fi"><label>Nome *</label><input type="text" id="fNome" placeholder="Nome completo"></div>
+        <div class="fi"><label>CPF</label><input type="text" id="fCpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)"></div>
+      </div>
+      <div class="fr c3">
+        <div class="fi"><label>Data da Exclusão</label><input type="date" id="fData"></div>
+        <div class="fi"><label>N.º do Parecer</label><input type="text" id="fParecer" placeholder="XX/XXXX" maxlength="9" oninput="maskParecer(this)" onblur="ajustarParecer(this)"></div>
+        <div class="fi"><label>Técnico Avaliador</label><input type="text" id="fTecnico" placeholder="Nome do técnico"></div>
+      </div>
+      <div class="rbox" id="tipoBox">
+        <legend>Tipo de Monitoramento *</legend>
+        <div class="rg">
+          <label><input type="radio" name="tipo" value="entrevistador" onchange="toggleTipo()"> Apuração entrevistador</label>
+          <label><input type="radio" name="tipo" value="rotina" onchange="toggleTipo()"> Monitoramento de Rotina</label>
+        </div>
+        <div class="rs hidden" id="subEntrev">
+          <div class="fi"><label>Nome do Entrevistador</label><input type="text" id="fENome" placeholder="Nome completo do entrevistador"></div>
+          <div class="fi"><label>CPF do Entrevistador</label><input type="text" id="fECpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)"></div>
+        </div>
+        <div class="rs r3 hidden" id="subRotina">
+          <div class="fi"><label>Mês/Ano</label><input type="text" id="fMes" placeholder="MM/AAAA" maxlength="7" oninput="maskMes(this)"></div>
+          <div class="fi"><label>Base</label>
+            <select id="fBase2"><option value="">Selecione…</option><option>CAD</option><option>PBF</option></select>
+          </div>
+          <div class="fi"><label>Entrevistador Responsável</label><input type="text" id="fRResp" placeholder="Nome do entrevistador"></div>
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvar()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        <span id="bSalvar">Cadastrar</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRM -->
+<div class="overlay hidden" id="cOverlay">
+  <div class="cbox">
+    <div class="ci">⚠️</div>
+    <h3>Confirmar Exclusão</h3>
+    <p>Esta ação é irreversível.<br>Deseja realmente excluir este caso?</p>
+    <div class="cb">
+      <button class="btn btn-outline" onclick="fecharConfirm()">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmarDel()">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORTAÇÃO -->
+<div class="overlay hidden" id="iOverlay">
+  <div class="modal wide">
+    <div class="mh"><h2>Importar lista de nomes</h2><button class="mc" onclick="fecharImport()">×</button></div>
+    <div class="mb">
+      <div class="imp-entrada">
+        <div class="ou">
+          <input type="file" id="impFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="lerPlanilha(this)">
+          <button class="btn btn-primary" onclick="document.getElementById('impFile').click()">Escolher planilha (.xlsx / .csv)</button>
+          <button class="btn btn-outline" onclick="baixarModelo()">Baixar planilha modelo</button>
+        </div>
+        <div class="fi">
+          <label>ou cole a lista aqui</label>
+          <textarea id="impTxt" placeholder="Um nome por linha. Pode ter o CPF ao lado (ex.: Maria da Silva; 123.456.789-00).&#10;Também dá para copiar as linhas direto do Excel e colar aqui."></textarea>
+          <div><button class="btn btn-outline btn-sm" onclick="lerColado()">Ler lista colada</button></div>
+        </div>
+      </div>
+
+      <div id="impPrev" class="imp-prev hidden">
+        <div class="imp-help" id="impHelp"></div>
+        <fieldset class="rbox">
+          <legend>Preencher nas linhas em que a lista não informar</legend>
+          <div class="fr c4">
+            <div class="fi"><label>Tipo de Monitoramento</label>
+              <select id="pTipo" onchange="montarImport()"><option value="">—</option><option value="entrevistador">Apuração entrevistador</option><option value="rotina">Monitoramento de Rotina</option></select>
+            </div>
+            <div class="fi"><label>Data da Exclusão</label><input type="date" id="pData" onchange="montarImport()"></div>
+            <div class="fi"><label>N.º do Parecer</label><input type="text" id="pParecer" placeholder="XX/XXXX" maxlength="9" oninput="maskParecer(this)" onchange="montarImport()"></div>
+            <div class="fi"><label>Técnico Avaliador</label><input type="text" id="pTecnico" onchange="montarImport()"></div>
+            <div class="fi"><label>Entrevistador</label><input type="text" id="pENome" onchange="montarImport()"></div>
+            <div class="fi" id="pECpfBox"><label>CPF do Entrevistador</label><input type="text" id="pECpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)" onchange="montarImport()"></div>
+            <div class="fi"><label>Mês/Ano (rotina)</label><input type="text" id="pMes" placeholder="MM/AAAA" maxlength="7" oninput="maskMes(this)" onchange="montarImport()"></div>
+            <div class="fi"><label>Base (rotina)</label>
+              <select id="pBase" onchange="montarImport()"><option value="">—</option><option>CAD</option><option>PBF</option></select>
+            </div>
+          </div>
+        </fieldset>
+        <div class="imp-sum" id="impSum"></div>
+        <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="renderImport()"> Importar também os possíveis duplicados</label>
+        <div class="imp-tw"><table>
+          <thead><tr><th>Linha</th><th>Situação</th><th>Nome</th><th>CPF</th><th>Dt. Exclusão</th><th>Tipo</th><th>Mês/Ano</th><th>Base</th><th>Entrevistador</th><th>N.º Parecer</th><th>Técnico Avaliador</th></tr></thead>
+          <tbody id="impBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="fecharImport()">Cancelar</button>
+      <button class="btn btn-primary" id="impBtn" onclick="confirmarImport()" disabled>Importar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════
+// CONFIGURAÇÃO DO FIREBASE
+// ════════════════════════════════════════════════════════
+// Usa o mesmo banco do Controle de Apurações, mas em uma área separada
+// ("casosSuspeitos"), então os dados dos dois sistemas não se misturam.
+const firebaseConfig = {
+  apiKey: "AIzaSyBeUbSFI45r-t3QppxsX8xEV04EYLqmZ_8",
+  authDomain: "controle-apuracoes.firebaseapp.com",
+  databaseURL: "https://controle-apuracoes-default-rtdb.firebaseio.com",
+  projectId: "controle-apuracoes",
+  storageBucket: "controle-apuracoes.firebasestorage.app",
+  messagingSenderId: "304302436551",
+  appId: "1:304302436551:web:9c95df0754882a789dcee2"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db_ref = firebase.database().ref('casosSuspeitos');
+
+// ── STATE ────────────────────────────────────────────────
+let db = [], sfld = 'ordem', sdir = 'asc', pg = 1, delTarget = null;
+
+// ── FIREBASE: LISTENER EM TEMPO REAL ────────────────────
+// Qualquer pessoa que abrir o link vê os dados sempre atualizados,
+// e qualquer edição é refletida para todos automaticamente.
+db_ref.on('value', (snapshot) => {
+  const val = snapshot.val();
+  db = val ? Object.values(val) : [];
+  document.getElementById('loader').classList.add('hidden');
+  setConn(true);
+  render();
+}, (error) => {
+  console.error('Erro Firebase:', error);
+  setConn(false);
+  toast('⚠ Erro de conexão com o banco de dados.');
+});
+
+// Detecta status de conexão real do Firebase
+firebase.database().ref('.info/connected').on('value', (snap) => {
+  setConn(snap.val() === true);
+});
+
+function setConn(online) {
+  const el = document.getElementById('connStatus');
+  const txt = document.getElementById('connText');
+  const dot = el.querySelector('.dot');
+  if (online) {
+    el.className = 'online no-print';
+    txt.textContent = 'Conectado · tempo real';
+    dot.classList.remove('pulse');
+  } else {
+    el.className = 'offline no-print';
+    txt.textContent = 'Reconectando…';
+    dot.classList.add('pulse');
+  }
+}
+
+// ── UTILS ────────────────────────────────────────────────
+// fd serve para datas (AAAA-MM-DD → DD/MM/AAAA) e para mês/ano (AAAA-MM → MM/AAAA)
+const fd = s => s ? s.split('-').reverse().join('/') : '—';
+const nextId = () => db.length ? Math.max(...db.map(r=>+r.id||0))+1 : 1;
+const nextOrd = () => db.length ? Math.max(...db.map(r=>+r.ordem||0))+1 : 1;
+const semAcento = s => String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+const chaveCol  = s => semAcento(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+const normNome  = s => semAcento(s).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const soDig = s => String(s??'').replace(/\D/g,'');
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const vazio = v => v===undefined || v===null || String(v).trim()==='';
+const $ = id => document.getElementById(id);
+
+const TIPOS = { entrevistador:'Apuração entrevistador', rotina:'Monitoramento de Rotina' };
+
+function maskCpf(el) {
+  let v = el.value.replace(/\D/g,'').slice(0,11);
+  if (v.length>9) v=v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,'$1.$2.$3-$4');
+  else if(v.length>6) v=v.replace(/(\d{3})(\d{3})(\d{1,3})/,'$1.$2.$3');
+  else if(v.length>3) v=v.replace(/(\d{3})(\d{1,3})/,'$1.$2');
+  el.value=v;
+}
+function maskMes(el) {
+  let v = el.value.replace(/\D/g,'').slice(0,6);
+  if (v.length>2) v = v.slice(0,2)+'/'+v.slice(2);
+  el.value = v;
+}
+// N.º do parecer: número, barra e ano (XX/XXXX)
+function maskParecer(el) {
+  const p = el.value.replace(/[^\d\/]/g,'').split('/');
+  el.value = p.length>1 ? p[0].slice(0,4)+'/'+p.slice(1).join('').slice(0,4) : p[0].slice(0,6);
+}
+function ajustarParecer(el) {
+  const r = parseParecer(el.value);
+  if (!r.erro) el.value = r.v;
+  el.classList.toggle('err', !!r.erro);
+}
+function toast(msg,dur=2800){
+  const t=$('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(()=>t.classList.remove('show'),dur);
+}
+function badgeTipo(v){
+  if(v==='entrevistador') return '<span class="badge b-mds">Apuração entrevistador</span>';
+  if(v==='rotina') return '<span class="badge b-mon">Monitoramento de Rotina</span>';
+  return '—';
+}
+function badgeBase(v){ return v ? `<span class="badge ${v==='PBF'?'b-sigrc':'b-sei'}">${esc(v)}</span>` : '—'; }
+
+// ── LEITURA E VALIDAÇÃO DE VALORES ───────────────────────
+// Usadas tanto no formulário quanto na importação.
+function parseCpf(v){
+  const orig = String(v??'').trim();
+  if(!orig) return {v:''};
+  let d = orig.replace(/\D/g,'');
+  // O Excel costuma apagar os zeros à esquerda do CPF quando a célula é numérica
+  if(d.length>=8 && d.length<11) d = d.padStart(11,'0');
+  if(d.length!==11) return {v:orig, aviso:'CPF com quantidade de dígitos diferente de 11'};
+  return {v:d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')};
+}
+function parseData(v){
+  if(vazio(v)) return {v:''};
+  let y,m,d;
+  if(typeof v==='number'){                       // data numérica do Excel
+    const p = XLSX.SSF.parse_date_code(v);
+    if(p){ y=p.y; m=p.m; d=p.d; }
+  } else {
+    const s = String(v).trim();
+    let r;
+    if((r = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))){ d=+r[1]; m=+r[2]; y=+r[3]; if(y<100) y+=2000; }
+    else if((r = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))){ y=+r[1]; m=+r[2]; d=+r[3]; }
+  }
+  const dt = y ? new Date(y, m-1, d) : null;
+  if(!dt || dt.getFullYear()!==y || dt.getMonth()!==m-1 || dt.getDate()!==d || y<1990 || y>2100)
+    return {v:'', erro:`data inválida: "${v}"`};
+  return {v:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
+}
+// Mês/ano do monitoramento, gravado como AAAA-MM. Aceita 03/2025, 3/25, 2025-03, mar/2025, março de 2025…
+const MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+function parseMesAno(v){
+  if(vazio(v)) return {v:''};
+  let y, m;
+  if(typeof v==='number'){                       // o Excel transforma "03/2025" em data
+    const p = XLSX.SSF.parse_date_code(v);
+    if(p){ y=p.y; m=p.m; }
+  } else {
+    const s = semAcento(v).toLowerCase().trim();
+    let r;
+    if((r = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))){ m=+r[2]; y=+r[3]; }
+    else if((r = s.match(/^(\d{1,2})[\/.-](\d{2}|\d{4})$/))){ m=+r[1]; y=+r[2]; }
+    else if((r = s.match(/^(\d{4})[\/.-](\d{1,2})(?:[\/.-]\d{1,2})?$/))){ y=+r[1]; m=+r[2]; }
+    else if((r = s.match(/^([a-z]{3})[a-z]*\.?\s*(?:de\s+|[\/.-]\s*)?(\d{2}|\d{4})$/))){ m=MESES.indexOf(r[1])+1; y=+r[2]; }
+    if(y && y<100) y+=2000;
+  }
+  if(!y || !(m>=1 && m<=12) || y<1990 || y>2100) return {v:'', erro:`mês/ano inválido: "${v}" (use MM/AAAA)`};
+  return {v:`${y}-${String(m).padStart(2,'0')}`};
+}
+// N.º do parecer no formato XX/XXXX (número com pelo menos 2 dígitos / ano com 4 dígitos)
+function parseParecer(v){
+  if(vazio(v)) return {v:''};
+  let n, a;
+  if(typeof v==='number'){
+    // O Excel transforma "05/2025" em data (1º de maio de 2025)
+    const p = XLSX.SSF.parse_date_code(v);
+    if(p && p.d===1){ n=String(p.m); a=String(p.y); }
+  } else {
+    const s = String(v).trim();
+    let r;
+    if((r = s.match(/^(\d{1,4})\s*[\/.-]\s*(\d{4}|\d{2})$/))){ n=r[1]; a=r[2]; }
+    else if(/^\d{6}$/.test(s)){ n=s.slice(0,2); a=s.slice(2); }
+  }
+  if(a && a.length===2) a='20'+a;
+  if(!n || !(+a>=1990 && +a<=2100)) return {v:String(v).trim(), erro:`N.º do parecer inválido: "${v}" (use XX/XXXX)`};
+  return {v:`${n.padStart(2,'0')}/${a}`};
+}
+function parseTipo(v){
+  const k = chaveCol(v);
+  if(!k) return {v:''};
+  if(k.includes('entrev') || k.includes('apura')) return {v:'entrevistador'};
+  if(k.includes('rotina') || k.includes('monit')) return {v:'rotina'};
+  return {v:'', erro:`tipo não reconhecido: "${v}" (use Apuração entrevistador ou Monitoramento de Rotina)`};
+}
+function parseBase(v){
+  const k = chaveCol(v);
+  if(!k) return {v:''};
+  if(k.includes('pbf') || k.includes('bolsa')) return {v:'PBF'};
+  if(k.includes('cad')) return {v:'CAD'};
+  return {v:'', erro:`base não reconhecida: "${v}" (use CAD ou PBF)`};
+}
+
+// ── FILTER + SORT ────────────────────────────────────────
+function filtrar() {
+  const q = semAcento($('busca').value).toLowerCase().trim();
+  const t = $('fTipo').value, b = $('fBase').value, p = $('fComParecer').value;
+  return db.filter(r => {
+    if(q && !semAcento(`${r.nome} ${r.cpf} ${r.parecer} ${r.tecnico} ${r.entrevNome} ${r.entrevCpf} ${fd(r.mesAno)} ${r.ordem}`).toLowerCase().includes(q)) return false;
+    if(t && r.tipo!==t) return false;
+    if(b && r.base!==b) return false;
+    if(p==='com' && !r.parecer) return false;
+    if(p==='sem' &&  r.parecer) return false;
+    return true;
+  });
+}
+function valOrd(r, f){
+  if(f==='ordem') return +r.ordem||0;
+  if(f==='parecer'){ const m=String(r.parecer||'').match(/^(\d+)\/(\d{4})$/); return m ? m[2]+m[1].padStart(6,'0') : String(r.parecer||''); }
+  if(f==='nome' || f==='entrevNome' || f==='tecnico') return normNome(r[f]);
+  return r[f]??'';
+}
+function ordenar(lst) {
+  return [...lst].sort((a,b)=>{
+    const va=valOrd(a,sfld), vb=valOrd(b,sfld);
+    if(va<vb) return sdir==='asc'?-1:1;
+    if(va>vb) return sdir==='asc'?1:-1;
+    return (+a.ordem||0)-(+b.ordem||0);
+  });
+}
+function sort(f){
+  if(sfld===f) sdir=sdir==='asc'?'desc':'asc'; else{sfld=f;sdir='asc';}
+  render();
+}
+
+// ── STATS ────────────────────────────────────────────────
+function stats(filtered) {
+  $('sTotal').textContent  = db.length;
+  $('sEntrev').textContent = db.filter(x=>x.tipo==='entrevistador').length;
+  $('sRotina').textContent = db.filter(x=>x.tipo==='rotina').length;
+  $('sCom').textContent    = db.filter(x=>x.parecer).length;
+  $('sSem').textContent    = db.filter(x=>!x.parecer).length;
+  $('sView').textContent   = filtered.length;
+}
+
+// ── PAGINATOR ────────────────────────────────────────────
+function goPage(p){ pg=p; render(); }
+
+function renderPaginator(total, pp) {
+  const pages = Math.max(1, Math.ceil(total/pp));
+  if(pg>pages) pg=pages;
+  const start=(pg-1)*pp+1, end=Math.min(pg*pp,total);
+  $('pageInfo').textContent = total===0 ? '' : `${start}–${end} de ${total}`;
+
+  const cont = $('pageBtns');
+  if(pp>=999999){ cont.innerHTML=''; return; }
+  let html = `<button onclick="goPage(${pg-1})" ${pg===1?'disabled':''}>‹</button>`;
+
+  const W=2;
+  let lo=Math.max(1,pg-W), hi=Math.min(pages,pg+W);
+  if(lo>1) html+=`<button onclick="goPage(1)">1</button>${lo>2?'<button disabled>…</button>':''}`;
+  for(let i=lo;i<=hi;i++) html+=`<button class="${i===pg?'active':''}" onclick="goPage(${i})">${i}</button>`;
+  if(hi<pages) html+=`${hi<pages-1?'<button disabled>…</button>':''}<button onclick="goPage(${pages})">${pages}</button>`;
+  html+=`<button onclick="goPage(${pg+1})" ${pg===pages?'disabled':''}>›</button>`;
+  cont.innerHTML=html;
+}
+
+// ── RENDER TABLE ─────────────────────────────────────────
+function render() {
+  const filtered = ordenar(filtrar());
+  stats(filtered);
+
+  const pp = parseInt($('perPage').value)||25;
+  renderPaginator(filtered.length, pp);
+  const page = pp>=999999 ? filtered : filtered.slice((pg-1)*pp, pg*pp);
+
+  $('cntLabel').textContent = `${filtered.length} caso${filtered.length!==1?'s':''}`;
+
+  ['ordem','nome','cpf','dataExclusao','tipo','mesAno','base','entrevNome','parecer','tecnico'].forEach(f=>{
+    const el=$('si-'+f);
+    if(el) el.textContent = sfld===f?(sdir==='asc'?' ▲':' ▼'):' ↕';
+  });
+
+  const tbody = $('tbody');
+  if(page.length===0){
+    tbody.innerHTML=`<tr class="empty-row"><td colspan="11">${db.length===0?'Nenhum caso cadastrado. Clique em «Novo Caso» ou «Importar lista» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = page.map((r,i)=>`<tr class="${i%2?'even':''}">
+      <td><span class="num">${String(r.ordem).padStart(3,'0')}</span></td>
+      <td class="cut" title="${esc(r.nome)}">${esc(r.nome)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
+      <td style="white-space:nowrap">${fd(r.dataExclusao)}</td>
+      <td>${badgeTipo(r.tipo)}</td>
+      <td style="white-space:nowrap">${r.mesAno?fd(r.mesAno):'—'}</td>
+      <td>${badgeBase(r.base)}</td>
+      <td class="cut" title="${esc(r.entrevNome)}">${esc(r.entrevNome)||'—'}${r.entrevCpf?`<div class="sub mono">${esc(r.entrevCpf)}</div>`:''}</td>
+      <td class="mono" style="white-space:nowrap">${r.parecer?esc(r.parecer):'<span class="badge b-pend">Sem parecer</span>'}</td>
+      <td class="cut" title="${esc(r.tecnico)}">${esc(r.tecnico)||'—'}</td>
+      <td class="no-print" style="white-space:nowrap">
+        <button class="btn btn-outline btn-sm" onclick="editar(${+r.id})">Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="pedirDel(${+r.id})">Excluir</button>
+      </td>
+    </tr>`).join('');
+}
+
+// ── MODAL ────────────────────────────────────────────────
+const CAMPOS_FORM = ['fNome','fCpf','fData','fParecer','fTecnico','fENome','fECpf','fMes','fBase2','fRResp'];
+
+function limparErros(){
+  CAMPOS_FORM.forEach(id=>$(id).classList.remove('err'));
+  $('tipoBox').classList.remove('err');
+}
+function abrirNovo(){
+  $('mTitle').textContent='Novo Caso';
+  $('bSalvar').textContent='Cadastrar';
+  $('eId').value='';
+  CAMPOS_FORM.forEach(id=>$(id).value='');
+  document.querySelectorAll('input[name=tipo]').forEach(r=>r.checked=false);
+  limparErros(); toggleTipo();
+  $('mOverlay').classList.remove('hidden');
+  $('fNome').focus();
+}
+function fecharModal(){ $('mOverlay').classList.add('hidden'); }
+function tipoMarcado(){ const r=document.querySelector('input[name=tipo]:checked'); return r ? r.value : ''; }
+function toggleTipo(){
+  const v = tipoMarcado();
+  $('subEntrev').classList.toggle('hidden', v!=='entrevistador');
+  $('subRotina').classList.toggle('hidden', v!=='rotina');
+  if(v) $('tipoBox').classList.remove('err');
+}
+function editar(id){
+  const r=db.find(x=>+x.id===id); if(!r) return;
+  $('mTitle').textContent='Editar Caso';
+  $('bSalvar').textContent='Salvar Alterações';
+  $('eId').value=id;
+  $('fNome').value=r.nome||'';
+  $('fCpf').value=r.cpf||'';
+  $('fData').value=r.dataExclusao||'';
+  $('fParecer').value=r.parecer||'';
+  $('fTecnico').value=r.tecnico||'';
+  document.querySelectorAll('input[name=tipo]').forEach(x=>x.checked = x.value===r.tipo);
+  $('fENome').value = r.tipo==='entrevistador' ? (r.entrevNome||'') : '';
+  $('fECpf').value  = r.entrevCpf||'';
+  $('fRResp').value = r.tipo==='rotina' ? (r.entrevNome||'') : '';
+  $('fMes').value   = r.mesAno ? fd(r.mesAno) : '';
+  $('fBase2').value = r.base||'';
+  limparErros(); toggleTipo();
+  $('mOverlay').classList.remove('hidden');
+}
+async function salvar(){
+  limparErros();
+  const id = $('eId').value;
+  const nome = $('fNome').value.trim();
+  const tipo = tipoMarcado();
+  const par = parseParecer($('fParecer').value);
+  const mes = tipo==='rotina' ? parseMesAno($('fMes').value) : {v:''};
+  const erros = [];
+  if(!nome){ $('fNome').classList.add('err'); erros.push('Preencha o nome.'); }
+  if(!tipo){ $('tipoBox').classList.add('err'); erros.push('Escolha o tipo de monitoramento.'); }
+  if(par.erro){ $('fParecer').classList.add('err'); erros.push('N.º do parecer deve estar no formato XX/XXXX.'); }
+  if(mes.erro){ $('fMes').classList.add('err'); erros.push('Mês/ano deve estar no formato MM/AAAA.'); }
+  if(erros.length){ toast('⚠ '+erros.join(' '), 4000); return; }
+  const reg = {
+    nome,
+    cpf: $('fCpf').value.trim(),
+    dataExclusao: $('fData').value,
+    tipo,
+    entrevNome: (tipo==='entrevistador' ? $('fENome') : $('fRResp')).value.trim(),
+    entrevCpf: tipo==='entrevistador' ? $('fECpf').value.trim() : '',
+    mesAno: mes.v,
+    base: tipo==='rotina' ? $('fBase2').value : '',
+    parecer: par.v,
+    tecnico: $('fTecnico').value.trim(),
+  };
+  try {
+    if(id){
+      reg.id = +id;
+      const atual = db.find(x=>+x.id===+id);
+      reg.ordem = atual ? atual.ordem : nextOrd();
+      await db_ref.child(id).set(reg);
+      toast('✓ Caso atualizado.');
+    } else {
+      reg.id=nextId(); reg.ordem=nextOrd();
+      await db_ref.child(String(reg.id)).set(reg);
+      toast('✓ Caso cadastrado.');
+    }
+    fecharModal();
+    // render() é disparado automaticamente pelo listener 'value' do Firebase
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao salvar. Verifique sua conexão.');
+  }
+}
+
+// ── DELETE ───────────────────────────────────────────────
+function pedirDel(id){ delTarget=id; $('cOverlay').classList.remove('hidden'); }
+function fecharConfirm(){ delTarget=null; $('cOverlay').classList.add('hidden'); }
+async function confirmarDel(){
+  try {
+    await db_ref.child(String(delTarget)).remove();
+    fecharConfirm();
+    toast('Caso excluído.');
+    // render() é disparado automaticamente pelo listener 'value' do Firebase
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao excluir. Verifique sua conexão.');
+  }
+}
+
+// ── IMPORTAÇÃO DE LISTA ──────────────────────────────────
+// Lê uma planilha Excel/CSV ou uma lista colada, mostra uma prévia e ACRESCENTA
+// os casos novos (nunca apaga nem altera os já cadastrados).
+let impBrutos = [], impLinhas = [];
+
+// Nome da coluna na planilha (sem acentos, espaços e símbolos) → campo do sistema
+const IMP_COLUNAS = {
+  nome:'nome', nomecompleto:'nome', beneficiario:'nome', nomebeneficiario:'nome', nomedobeneficiario:'nome',
+  cpf:'cpf', cpfbeneficiario:'cpf', cpfdobeneficiario:'cpf',
+  dataexclusao:'dataExclusao', datadaexclusao:'dataExclusao', dtexclusao:'dataExclusao', exclusao:'dataExclusao', dataexcl:'dataExclusao',
+  tipo:'tipo', tipomonitoramento:'tipo', tipodemonitoramento:'tipo', monitoramento:'tipo',
+  entrevistador:'entrevNome', nomeentrevistador:'entrevNome', nomedoentrevistador:'entrevNome', entrevistadorresponsavel:'entrevNome',
+  cpfentrevistador:'entrevCpf', cpfdoentrevistador:'entrevCpf',
+  mesano:'mesAno', mesanomonitoramento:'mesAno', mesanodomonitoramento:'mesAno', mes:'mesAno', competencia:'mesAno', referencia:'mesAno',
+  base:'base', basecadpbf:'base',
+  parecer:'parecer', nparecer:'parecer', ndoparecer:'parecer', noparecer:'parecer', nodoparecer:'parecer', numeroparecer:'parecer', numerodoparecer:'parecer',
+  tecnico:'tecnico', tecnica:'tecnico', tecnicoavaliador:'tecnico', tecnicaavaliadora:'tecnico', avaliador:'tecnico', tecnicor:'tecnico', responsavel:'tecnico',
+};
+const MODELO_CAB = ['Nome','CPF','Data da Exclusão','Tipo de Monitoramento','Nome do Entrevistador','CPF do Entrevistador','Mês/Ano','Base','N.º do Parecer','Técnico Avaliador'];
+
+// Mesma pessoa (CPF, ou nome se não houver CPF) + mesmo tipo + mesmo monitoramento
+// (mês/ano e base na rotina; entrevistador na apuração) = possível duplicado.
+function chaveDup(r){
+  const quem = soDig(r.cpf).length>=8 ? soDig(r.cpf) : normNome(r.nome);
+  if(!quem) return '';
+  const ref = r.tipo==='rotina' ? `${r.mesAno||''}|${r.base||''}` : (soDig(r.entrevCpf) || normNome(r.entrevNome));
+  return `${quem}|${r.tipo||''}|${ref}`;
+}
+
+function abrirImport(){
+  impBrutos = []; impLinhas = [];
+  $('impTxt').value = '';
+  ['pTipo','pData','pParecer','pTecnico','pENome','pECpf','pMes','pBase'].forEach(id=>{ $(id).value=''; $(id).classList.remove('err'); });
+  $('impPrev').classList.add('hidden');
+  const b = $('impBtn'); b.disabled = true; b.textContent = 'Importar';
+  $('iOverlay').classList.remove('hidden');
+}
+function fecharImport(){ impBrutos = []; impLinhas = []; $('iOverlay').classList.add('hidden'); }
+
+function baixarModelo(){
+  if(typeof XLSX==='undefined'){ toast('⚠ Não foi possível carregar o gerador de planilhas. Verifique a internet.'); return; }
+  const ws = XLSX.utils.aoa_to_sheet([
+    MODELO_CAB,
+    ['Maria da Silva','000.000.000-00','15/03/2025','Apuração entrevistador','João de Souza','000.000.000-00','','','01/2025','Ana Lima'],
+    ['José dos Santos','000.000.000-00','15/03/2025','Monitoramento de Rotina','Carla Dias','','03/2025','CAD','02/2025','Ana Lima'],
+  ]);
+  ws['!cols'] = MODELO_CAB.map(h=>({wch:Math.max(14,h.length+2)}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Casos');
+  XLSX.writeFile(wb, 'modelo-casos-suspeitos.xlsx');
+}
+
+function lerPlanilha(input){
+  const file = input.files[0];
+  input.value = '';                               // permite escolher o mesmo arquivo de novo
+  if(!file) return;
+  if(typeof XLSX==='undefined'){ toast('⚠ Não foi possível carregar o leitor de planilhas. Verifique a internet.'); return; }
+  const csv = /\.csv$/i.test(file.name);
+  const fr = new FileReader();
+  fr.onload = e => {
+    try {
+      let wb;
+      if(csv){
+        // CSV salvo pelo Excel costuma vir em Windows-1252; se não for UTF-8 válido, usa essa codificação.
+        // É lido como texto puro (raw) para o leitor não trocar dia e mês das datas.
+        let txt;
+        try { txt = new TextDecoder('utf-8', {fatal:true}).decode(e.target.result); }
+        catch(_) { txt = new TextDecoder('windows-1252').decode(e.target.result); }
+        wb = XLSX.read(txt.replace(/^﻿/,''), {type:'string', raw:true});
+      } else {
+        wb = XLSX.read(e.target.result, {type:'array'});
+      }
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const linhas = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+      prepararImport(`Arquivo <b>${esc(file.name)}</b>`, linhas, false);
+    } catch(err) {
+      console.error(err);
+      toast('⚠ Não foi possível ler o arquivo. Use .xlsx, .xls ou .csv.');
+    }
+  };
+  fr.readAsArrayBuffer(file);
+}
+
+// Lista colada: um nome por linha, com ou sem CPF. Aceita linhas copiadas do Excel
+// (colunas separadas por tabulação), separadas por ";" ou "Nome - CPF".
+const RE_CPF = /^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/;
+function lerColado(){
+  const linhas = $('impTxt').value.split(/\r?\n/).filter(l=>l.trim()).map(l=>{
+    let c = (l.includes('\t') ? l.split('\t') : l.includes(';') ? l.split(';') : [l]).map(x=>x.trim());
+    if(c.length===1){
+      let m = c[0].match(/^(.*?)[\s,;–-]+(\d{3}\.?\d{3}\.?\d{3}-?\d{2})$/);
+      if(m) c = [m[1].trim(), m[2]];
+      else if((m = c[0].match(/^(\d{3}\.?\d{3}\.?\d{3}-?\d{2})[\s,;–-]+(.*)$/))) c = [m[2].trim(), m[1]];
+    }
+    return c;
+  });
+  if(!linhas.length){ toast('⚠ Cole pelo menos um nome na caixa de texto.'); return; }
+  const temCab = linhas[0].some(h=>IMP_COLUNAS[chaveCol(h)]==='nome');
+  if(!temCab){
+    // Lista simples: primeira coluna é o nome e a segunda, se houver, o CPF
+    linhas.forEach((c,i)=>{ if(RE_CPF.test(c[0]) && c[1] && !RE_CPF.test(c[1])) linhas[i] = [c[1], c[0], ...c.slice(2)]; });
+    linhas.unshift(['Nome','CPF']);
+  }
+  prepararImport('Lista colada', linhas, !temCab);
+}
+
+function prepararImport(origem, linhas, simples){
+  const cab = (linhas[0]||[]).map(h=>IMP_COLUNAS[chaveCol(h)]||null);
+  if(!cab.includes('nome')){
+    toast('⚠ A planilha precisa ter uma coluna "Nome" na primeira linha.', 4500);
+    return;
+  }
+  const reconhecidas = (linhas[0]||[]).filter((h,i)=>cab[i]).map(h=>String(h).trim());
+  const ignoradas = (linhas[0]||[]).filter((h,i)=>!cab[i] && String(h).trim()).map(h=>String(h).trim());
+  impBrutos = [];
+  linhas.slice(1).forEach((lin, i)=>{
+    if(!lin.some(c=>String(c).trim()!=='')) return;   // linha em branco
+    const bruto = {};
+    cab.forEach((campo, j)=>{ if(campo && vazio(bruto[campo])) bruto[campo] = lin[j]; });
+    impBrutos.push({linha: simples ? i+1 : i+2, bruto});
+  });
+  $('impHelp').innerHTML =
+    `${origem}. ` + (simples
+      ? 'Lida como lista simples (nome e, se houver, CPF).'
+      : `Colunas reconhecidas: ${reconhecidas.map(h=>`<code>${esc(h)}</code>`).join(' ')}` +
+        (ignoradas.length ? `<br>Colunas ignoradas: ${ignoradas.map(h=>`<code>${esc(h)}</code>`).join(' ')}` : '')) +
+    `<br>Use os campos abaixo para preencher de uma vez o que for igual para todos (por exemplo, o mesmo tipo de monitoramento, mês/ano e base). `+
+    `Nada é gravado até você clicar em <b>Importar</b>; a importação só acrescenta casos novos.`;
+  $('impDup').checked = false;
+  $('impPrev').classList.remove('hidden');
+  montarImport();
+}
+
+function lerPadroes(){
+  const pad = {
+    tipo: $('pTipo').value, dataExclusao: $('pData').value,
+    tecnico: $('pTecnico').value.trim(), entrevNome: $('pENome').value.trim(),
+    entrevCpf: $('pECpf').value.trim(), base: $('pBase').value,
+  };
+  const par = parseParecer($('pParecer').value), mes = parseMesAno($('pMes').value);
+  $('pParecer').classList.toggle('err', !!par.erro);
+  $('pMes').classList.toggle('err', !!mes.erro);
+  if(!par.erro) { pad.parecer = par.v; if(par.v) $('pParecer').value = par.v; } else pad.parecer = '';
+  pad.mesAno = mes.erro ? '' : mes.v;
+  $('pECpfBox').style.display = pad.tipo==='rotina' ? 'none' : '';
+  return pad;
+}
+
+function montarImport(){
+  const pad = lerPadroes();
+  const existentes = new Set(db.map(chaveDup).filter(Boolean));
+  const noArquivo = new Set();
+  impLinhas = impBrutos.map(({linha, bruto})=>{
+    const erros = [], avisos = [];
+    const campo = (nome, parse, padrao) => {
+      if(vazio(bruto[nome])) return padrao;
+      const r = parse(bruto[nome]);
+      if(r.erro) erros.push(r.erro);
+      if(r.aviso) avisos.push(r.aviso);
+      return r.v;
+    };
+    const tipo = campo('tipo', parseTipo, pad.tipo);
+    const reg = {
+      nome: String(bruto.nome??'').trim(),
+      cpf: campo('cpf', parseCpf, ''),
+      dataExclusao: campo('dataExclusao', parseData, pad.dataExclusao),
+      tipo,
+      entrevNome: String(bruto.entrevNome??'').trim() || pad.entrevNome,
+      entrevCpf: tipo==='rotina' ? '' : campo('entrevCpf', parseCpf, pad.entrevCpf),
+      mesAno: tipo==='entrevistador' ? '' : campo('mesAno', parseMesAno, pad.mesAno),
+      base: tipo==='entrevistador' ? '' : campo('base', parseBase, pad.base),
+      parecer: campo('parecer', parseParecer, pad.parecer),
+      tecnico: String(bruto.tecnico??'').trim() || pad.tecnico,
+    };
+    if(!reg.nome) erros.push('nome em branco');
+    if(!reg.tipo && !erros.length) avisos.push('tipo de monitoramento não informado');
+    let dup = false;
+    const k = chaveDup(reg);
+    if(!erros.length && k){
+      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesma pessoa e mesmo monitoramento)'); }
+      else if(noArquivo.has(k)){ dup = true; avisos.push('repetido nesta lista'); }
+      noArquivo.add(k);
+    }
+    return {linha, reg, erros, avisos, dup};
+  });
+  const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
+  $('impDupOpt').style.display = dup ? '' : 'none';
+  if(!dup) $('impDup').checked = false;
+  renderImport();
+}
+
+function linhasParaImportar(){
+  const comDup = $('impDup').checked;
+  return impLinhas.filter(l=>!l.erros.length && (comDup || !l.dup));
+}
+
+function renderImport(){
+  const lst = linhasParaImportar();
+  const ok  = impLinhas.filter(l=>!l.erros.length && !l.dup).length;
+  const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
+  const err = impLinhas.filter(l=>l.erros.length).length;
+  const semTipo = lst.filter(l=>!l.reg.tipo).length;
+  $('impSum').innerHTML =
+    `<span class="badge b-resp">✓ ${ok} novo${ok!==1?'s':''}</span>`+
+    `<span class="badge b-pend">⚠ ${dup} possíve${dup!==1?'is':'l'} duplicado${dup!==1?'s':''}</span>`+
+    `<span class="badge b-sim">✕ ${err} com erro (não ser${err!==1?'ão':'á'} importado${err!==1?'s':''})</span>`+
+    (semTipo ? `<span class="badge b-outro">${semTipo} sem tipo de monitoramento</span>` : '');
+  $('impBody').innerHTML = impLinhas.length ? impLinhas.map(l=>{
+    const r = l.reg;
+    const sit = l.erros.length ? '<span class="badge b-sim">Erro</span>'
+              : l.dup ? '<span class="badge b-pend">Duplicado?</span>'
+              : '<span class="badge b-resp">Novo</span>';
+    const msgs = (l.erros.length ? `<div class="imp-msg">${l.erros.map(esc).join('<br>')}</div>` : '') +
+                 (l.avisos.length ? `<div class="imp-msg av">${l.avisos.map(esc).join('<br>')}</div>` : '');
+    return `<tr class="${l.erros.length?'r-err':l.dup?'r-dup':''}">
+      <td>${l.linha}</td><td>${sit}${msgs}</td>
+      <td>${esc(r.nome)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
+      <td style="white-space:nowrap">${fd(r.dataExclusao)}</td>
+      <td>${badgeTipo(r.tipo)}</td>
+      <td style="white-space:nowrap">${r.mesAno?fd(r.mesAno):'—'}</td>
+      <td>${badgeBase(r.base)}</td>
+      <td>${esc(r.entrevNome)||'—'}${r.entrevCpf?`<div class="sub mono">${esc(r.entrevCpf)}</div>`:''}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.parecer)||'—'}</td>
+      <td>${esc(r.tecnico)||'—'}</td></tr>`;
+  }).join('') : '<tr class="empty-row"><td colspan="11">A lista não tem linhas com dados.</td></tr>';
+  const n = lst.length;
+  const b = $('impBtn');
+  b.textContent = n ? `Importar ${n} caso${n!==1?'s':''}` : 'Nada para importar';
+  b.disabled = !n;
+}
+
+async function confirmarImport(){
+  const lst = linhasParaImportar();
+  if(!lst.length) return;
+  const b = $('impBtn');
+  b.disabled = true; b.textContent = 'Importando…';
+  let id = nextId(), ordem = nextOrd();
+  const novos = {};
+  lst.forEach(l=>{ novos[String(id)] = {...l.reg, id, ordem}; id++; ordem++; });
+  try {
+    // update() grava tudo de uma vez (ou nada, se falhar)
+    await db_ref.update(novos);
+    fecharImport();
+    toast(`✓ ${lst.length} caso${lst.length!==1?'s':''} importado${lst.length!==1?'s':''}.`, 4500);
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao importar. Nada foi gravado. Verifique sua conexão.', 4500);
+    renderImport();
+  }
+}
+
+// ── PRINT ────────────────────────────────────────────────
+function imprimir(){
+  const f=ordenar(filtrar());
+  $('ph').innerHTML=`
+    <table style="width:100%;border:none;margin-bottom:8px"><tr>
+      <td style="border:none;padding:0"><div style="font-size:20px;font-weight:700;color:#1a4f8a">CONTROLE DE CASOS SUSPEITOS</div>
+        <div style="font-size:11px;color:#555;margin-top:2px">Gerado em: ${new Date().toLocaleString('pt-BR')} | Total exibido: ${f.length} casos</div></td>
+    </tr></table>`;
+  window.print();
+}
+
+// ── INIT ─────────────────────────────────────────────────
+$('perPage').value = '25';
+</script>
+</body>
+</html>
