@@ -187,6 +187,7 @@
   .fr.c2 { grid-template-columns:1fr 1fr; }
   .fr.c3 { grid-template-columns:1fr 1fr 1fr; }
   .fr.c4 { grid-template-columns:repeat(4,1fr); }
+  .fr.c3n { grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr); }
   .fi { display:flex; flex-direction:column; gap:5px; }
   .fi label { font-size:11.5px; font-weight:600; color:var(--c4); text-transform:uppercase; letter-spacing:.4px; }
   .fi input, .fi select, .fi textarea { border:1px solid var(--borda); border-radius:6px; padding:8px 11px; font-size:13px; color:var(--texto); outline:none; transition:.15s; font-family:inherit; background:#fff; }
@@ -255,7 +256,7 @@
   @media (max-width:700px) {
     header { padding:0 16px; }
     .container { padding:16px 16px 40px; }
-    .fr.c2, .fr.c3, .fr.c4, .rs, .rs.r3, .imp-entrada { grid-template-columns:1fr; }
+    .fr.c2, .fr.c3, .fr.c3n, .fr.c4, .rs, .rs.r3, .imp-entrada { grid-template-columns:1fr; }
     .tr { margin-left:0; }
   }
 </style>
@@ -308,7 +309,7 @@
 
   <!-- TOOLBAR -->
   <div class="toolbar no-print">
-    <input type="text" id="busca" placeholder="🔍  Buscar por nome, CPF, parecer, entrevistador, técnico…" oninput="goPage(1)">
+    <input type="text" id="busca" placeholder="🔍  Buscar por nome, CPF, código familiar, parecer, entrevistador, técnico…" oninput="goPage(1)">
     <select id="fTipo" onchange="goPage(1)">
       <option value="">Todos os tipos</option>
       <option value="entrevistador">Apuração entrevistador</option>
@@ -344,6 +345,7 @@
           <th onclick="sort('ordem')">N. Ordem<span id="si-ordem"> ↕</span></th>
           <th onclick="sort('nome')">Nome<span id="si-nome"> ↕</span></th>
           <th onclick="sort('cpf')">CPF<span id="si-cpf"> ↕</span></th>
+          <th onclick="sort('codFamiliar')">Código Familiar<span id="si-codFamiliar"> ↕</span></th>
           <th onclick="sort('dataExclusao')">Dt. Exclusão<span id="si-dataExclusao"> ↕</span></th>
           <th onclick="sort('tipo')">Tipo de Monitoramento<span id="si-tipo"> ↕</span></th>
           <th onclick="sort('mesAno')">Mês/Ano<span id="si-mesAno"> ↕</span></th>
@@ -379,9 +381,10 @@
     <div class="mh"><h2 id="mTitle">Novo Caso</h2><button class="mc" onclick="fecharModal()">×</button></div>
     <div class="mb">
       <input type="hidden" id="eId">
-      <div class="fr c2">
+      <div class="fr c3n">
         <div class="fi"><label>Nome *</label><input type="text" id="fNome" placeholder="Nome completo"></div>
         <div class="fi"><label>CPF</label><input type="text" id="fCpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)"></div>
+        <div class="fi"><label>Código Familiar</label><input type="text" id="fCodFam" placeholder="Código familiar" maxlength="20"></div>
       </div>
       <div class="fr c3">
         <div class="fi"><label>Data da Exclusão</label><input type="date" id="fData"></div>
@@ -470,7 +473,7 @@
         <div class="imp-sum" id="impSum"></div>
         <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="renderImport()"> Importar também os possíveis duplicados</label>
         <div class="imp-tw"><table>
-          <thead><tr><th>Linha</th><th>Situação</th><th>Nome</th><th>CPF</th><th>Dt. Exclusão</th><th>Tipo</th><th>Mês/Ano</th><th>Base</th><th>Entrevistador</th><th>N.º Parecer</th><th>Técnico Avaliador</th></tr></thead>
+          <thead><tr><th>Linha</th><th>Situação</th><th>Nome</th><th>CPF</th><th>Código Familiar</th><th>Dt. Exclusão</th><th>Tipo</th><th>Mês/Ano</th><th>Base</th><th>Entrevistador</th><th>N.º Parecer</th><th>Técnico Avaliador</th></tr></thead>
           <tbody id="impBody"></tbody>
         </table></div>
       </div>
@@ -602,6 +605,14 @@ function parseCpf(v){
   if(d.length!==11) return {v:orig, aviso:'CPF com quantidade de dígitos diferente de 11'};
   return {v:d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')};
 }
+// Código familiar (CadÚnico): o Excel apaga os zeros à esquerda quando a célula é numérica
+function parseCodFam(v){
+  const orig = String(v??'').trim();
+  if(!orig) return {v:''};
+  const d = orig.replace(/\D/g,'');
+  if(!/^[\d.\-\s]+$/.test(orig)) return {v:orig};
+  return {v: d.length>=8 && d.length<11 ? d.padStart(11,'0') : d};
+}
 function parseData(v){
   if(vazio(v)) return {v:''};
   let y,m,d;
@@ -677,7 +688,7 @@ function filtrar() {
   const q = semAcento($('busca').value).toLowerCase().trim();
   const t = $('fTipo').value, b = $('fBase').value, p = $('fComParecer').value;
   return db.filter(r => {
-    if(q && !semAcento(`${r.nome} ${r.cpf} ${r.parecer} ${r.tecnico} ${r.entrevNome} ${r.entrevCpf} ${fd(r.mesAno)} ${r.ordem}`).toLowerCase().includes(q)) return false;
+    if(q && !semAcento(`${r.nome} ${r.cpf} ${r.codFamiliar||''} ${r.parecer} ${r.tecnico} ${r.entrevNome} ${r.entrevCpf} ${fd(r.mesAno)} ${r.ordem}`).toLowerCase().includes(q)) return false;
     if(t && r.tipo!==t) return false;
     if(b && r.base!==b) return false;
     if(p==='com' && !r.parecer) return false;
@@ -747,20 +758,21 @@ function render() {
 
   $('cntLabel').textContent = `${filtered.length} caso${filtered.length!==1?'s':''}`;
 
-  ['ordem','nome','cpf','dataExclusao','tipo','mesAno','base','entrevNome','parecer','tecnico'].forEach(f=>{
+  ['ordem','nome','cpf','codFamiliar','dataExclusao','tipo','mesAno','base','entrevNome','parecer','tecnico'].forEach(f=>{
     const el=$('si-'+f);
     if(el) el.textContent = sfld===f?(sdir==='asc'?' ▲':' ▼'):' ↕';
   });
 
   const tbody = $('tbody');
   if(page.length===0){
-    tbody.innerHTML=`<tr class="empty-row"><td colspan="11">${db.length===0?'Nenhum caso cadastrado. Clique em «Novo Caso» ou «Importar lista» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
+    tbody.innerHTML=`<tr class="empty-row"><td colspan="12">${db.length===0?'Nenhum caso cadastrado. Clique em «Novo Caso» ou «Importar lista» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
     return;
   }
   tbody.innerHTML = page.map((r,i)=>`<tr class="${i%2?'even':''}">
       <td><span class="num">${String(r.ordem).padStart(3,'0')}</span></td>
       <td class="cut" title="${esc(r.nome)}">${esc(r.nome)||'—'}</td>
       <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.codFamiliar)||'—'}</td>
       <td style="white-space:nowrap">${fd(r.dataExclusao)}</td>
       <td>${badgeTipo(r.tipo)}</td>
       <td style="white-space:nowrap">${r.mesAno?fd(r.mesAno):'—'}</td>
@@ -776,7 +788,7 @@ function render() {
 }
 
 // ── MODAL ────────────────────────────────────────────────
-const CAMPOS_FORM = ['fNome','fCpf','fData','fParecer','fTecnico','fENome','fECpf','fMes','fBase2','fRResp'];
+const CAMPOS_FORM = ['fNome','fCpf','fCodFam','fData','fParecer','fTecnico','fENome','fECpf','fMes','fBase2','fRResp'];
 
 function limparErros(){
   CAMPOS_FORM.forEach(id=>$(id).classList.remove('err'));
@@ -807,6 +819,7 @@ function editar(id){
   $('eId').value=id;
   $('fNome').value=r.nome||'';
   $('fCpf').value=r.cpf||'';
+  $('fCodFam').value=r.codFamiliar||'';
   $('fData').value=r.dataExclusao||'';
   $('fParecer').value=r.parecer||'';
   $('fTecnico').value=r.tecnico||'';
@@ -835,6 +848,7 @@ async function salvar(){
   const reg = {
     nome,
     cpf: $('fCpf').value.trim(),
+    codFamiliar: parseCodFam($('fCodFam').value).v,
     dataExclusao: $('fData').value,
     tipo,
     entrevNome: (tipo==='entrevistador' ? $('fENome') : $('fRResp')).value.trim(),
@@ -888,6 +902,7 @@ let impBrutos = [], impLinhas = [];
 const IMP_COLUNAS = {
   nome:'nome', nomecompleto:'nome', beneficiario:'nome', nomebeneficiario:'nome', nomedobeneficiario:'nome',
   cpf:'cpf', cpfbeneficiario:'cpf', cpfdobeneficiario:'cpf',
+  codigofamiliar:'codFamiliar', codfamiliar:'codFamiliar', codigodafamilia:'codFamiliar', codfamilia:'codFamiliar', codigofamilia:'codFamiliar', cf:'codFamiliar',
   dataexclusao:'dataExclusao', datadaexclusao:'dataExclusao', dtexclusao:'dataExclusao', exclusao:'dataExclusao', dataexcl:'dataExclusao',
   tipo:'tipo', tipomonitoramento:'tipo', tipodemonitoramento:'tipo', monitoramento:'tipo',
   entrevistador:'entrevNome', nomeentrevistador:'entrevNome', nomedoentrevistador:'entrevNome', entrevistadorresponsavel:'entrevNome',
@@ -897,7 +912,7 @@ const IMP_COLUNAS = {
   parecer:'parecer', nparecer:'parecer', ndoparecer:'parecer', noparecer:'parecer', nodoparecer:'parecer', numeroparecer:'parecer', numerodoparecer:'parecer',
   tecnico:'tecnico', tecnica:'tecnico', tecnicoavaliador:'tecnico', tecnicaavaliadora:'tecnico', avaliador:'tecnico', tecnicor:'tecnico', responsavel:'tecnico',
 };
-const MODELO_CAB = ['Nome','CPF','Data da Exclusão','Tipo de Monitoramento','Nome do Entrevistador','CPF do Entrevistador','Mês/Ano','Base','N.º do Parecer','Técnico Avaliador'];
+const MODELO_CAB = ['Nome','CPF','Código Familiar','Data da Exclusão','Tipo de Monitoramento','Nome do Entrevistador','CPF do Entrevistador','Mês/Ano','Base','N.º do Parecer','Técnico Avaliador'];
 
 // Mesma pessoa (CPF, ou nome se não houver CPF) + mesmo tipo + mesmo monitoramento
 // (mês/ano e base na rotina; entrevistador na apuração) = possível duplicado.
@@ -922,8 +937,8 @@ function baixarModelo(){
   if(typeof XLSX==='undefined'){ toast('⚠ Não foi possível carregar o gerador de planilhas. Verifique a internet.'); return; }
   const ws = XLSX.utils.aoa_to_sheet([
     MODELO_CAB,
-    ['Maria da Silva','000.000.000-00','15/03/2025','Apuração entrevistador','João de Souza','000.000.000-00','','','01/2025','Ana Lima'],
-    ['José dos Santos','000.000.000-00','15/03/2025','Monitoramento de Rotina','Carla Dias','','03/2025','CAD','02/2025','Ana Lima'],
+    ['Maria da Silva','000.000.000-00','00000000000','15/03/2025','Apuração entrevistador','João de Souza','000.000.000-00','','','01/2025','Ana Lima'],
+    ['José dos Santos','000.000.000-00','00000000000','15/03/2025','Monitoramento de Rotina','Carla Dias','','03/2025','CAD','02/2025','Ana Lima'],
   ]);
   ws['!cols'] = MODELO_CAB.map(h=>({wch:Math.max(14,h.length+2)}));
   const wb = XLSX.utils.book_new();
@@ -1044,6 +1059,7 @@ function montarImport(){
     const reg = {
       nome: String(bruto.nome??'').trim(),
       cpf: campo('cpf', parseCpf, ''),
+      codFamiliar: campo('codFamiliar', parseCodFam, ''),
       dataExclusao: campo('dataExclusao', parseData, pad.dataExclusao),
       tipo,
       entrevNome: String(bruto.entrevNome??'').trim() || pad.entrevNome,
@@ -1097,6 +1113,7 @@ function renderImport(){
       <td>${l.linha}</td><td>${sit}${msgs}</td>
       <td>${esc(r.nome)||'—'}</td>
       <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.codFamiliar)||'—'}</td>
       <td style="white-space:nowrap">${fd(r.dataExclusao)}</td>
       <td>${badgeTipo(r.tipo)}</td>
       <td style="white-space:nowrap">${r.mesAno?fd(r.mesAno):'—'}</td>
@@ -1104,7 +1121,7 @@ function renderImport(){
       <td>${esc(r.entrevNome)||'—'}${r.entrevCpf?`<div class="sub mono">${esc(r.entrevCpf)}</div>`:''}</td>
       <td class="mono" style="white-space:nowrap">${esc(r.parecer)||'—'}</td>
       <td>${esc(r.tecnico)||'—'}</td></tr>`;
-  }).join('') : '<tr class="empty-row"><td colspan="11">A lista não tem linhas com dados.</td></tr>';
+  }).join('') : '<tr class="empty-row"><td colspan="12">A lista não tem linhas com dados.</td></tr>';
   const n = lst.length;
   const b = $('impBtn');
   b.textContent = n ? `Importar ${n} caso${n!==1?'s':''}` : 'Nada para importar';
