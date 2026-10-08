@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Controle de Casos Suspeitos</title>
+
+<!-- Firebase (compat SDK via CDN, sem necessidade de build/npm) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
+
+<!-- SheetJS: leitura de planilhas Excel/CSV para a importação em lote -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --azul:#1a4f8a; --azul2:#2567b0; --azul-bg:#e8f0f9;
+    --verde:#2e7d32; --verde-bg:#e8f5e9;
+    --laranja:#b45309; --laranja-bg:#fef3c7;
+    --vermelho:#991b1b; --vermelho-bg:#fee2e2;
+    --c1:#f4f5f7; --c2:#e9eaec; --c3:#b0b3ba; --c4:#6b7280;
+    --texto:#1a1d23; --borda:#d1d5db; --branco:#ffffff;
+    --r:8px;
+  }
+  body { font-family:'Segoe UI',system-ui,sans-serif; font-size:14px; color:var(--texto); background:var(--c1); min-height:100vh; }
+
+  /* LOADER */
+  #loader {
+    position:fixed; inset:0; background:var(--azul);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    z-index:999; color:#fff; font-size:15px;
+  }
+  #loader .spin {
+    width:48px; height:48px; border:4px solid rgba(255,255,255,.3);
+    border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #loader.hidden { display:none; }
+
+  /* CONN STATUS */
+  #connStatus {
+    position:fixed; bottom:16px; right:16px; z-index:998;
+    padding:6px 14px; border-radius:20px; font-size:12px; font-weight:600;
+    display:flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(0,0,0,.15);
+    transition:.2s;
+  }
+  #connStatus.online { background:var(--verde-bg); color:var(--verde); border:1px solid #a7f3d0; }
+  #connStatus.offline { background:var(--vermelho-bg); color:var(--vermelho); border:1px solid #fca5a5; }
+  .dot { width:8px; height:8px; border-radius:50%; background:currentColor; }
+  .dot.pulse { animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* HEADER */
+  header {
+    background:var(--azul); color:#fff; padding:0 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    height:60px; position:sticky; top:0; z-index:50;
+    box-shadow:0 2px 6px rgba(0,0,0,.18);
+  }
+  .hl { display:flex; align-items:center; gap:14px; }
+  .ht { font-size:17px; font-weight:600; letter-spacing:.3px; }
+  .hs { font-size:11px; opacity:.7; letter-spacing:.6px; text-transform:uppercase; margin-top:2px; }
+  .btn-print {
+    background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35);
+    color:#fff; border-radius:7px; padding:7px 16px; font-size:13px; cursor:pointer;
+    display:flex; align-items:center; gap:7px; transition:.15s;
+  }
+  .btn-print:hover { background:rgba(255,255,255,.28); }
+
+  /* CONTAINER */
+  .container { max-width:1500px; margin:0 auto; padding:24px 24px 40px; }
+
+  /* STATS */
+  .sg { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
+  .sc {
+    background:var(--branco); border:1px solid var(--borda);
+    border-radius:var(--r); padding:16px 18px; border-left:4px solid;
+  }
+  .sc.total { border-left-color:var(--azul); }
+  .sc.resp  { border-left-color:var(--verde); }
+  .sc.pend  { border-left-color:var(--laranja); }
+  .sc.reit  { border-left-color:var(--vermelho); }
+  .sl { font-size:11px; color:var(--c4); font-weight:500; text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
+  .sv { font-size:28px; font-weight:700; line-height:1; }
+  .sc.total .sv { color:var(--azul); }
+  .sc.resp  .sv { color:var(--verde); }
+  .sc.pend  .sv { color:var(--laranja); }
+  .sc.reit  .sv { color:var(--vermelho); }
+
+  /* TOOLBAR */
+  .toolbar {
+    display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    background:var(--branco); border:1px solid var(--borda);
+    border-radius:var(--r); padding:12px 16px; margin-bottom:16px;
+  }
+  .toolbar input, .toolbar select {
+    border:1px solid var(--borda); border-radius:6px; padding:7px 11px;
+    font-size:13px; color:var(--texto); background:var(--c1); outline:none; transition:.15s;
+  }
+  .toolbar input:focus, .toolbar select:focus { border-color:var(--azul2); background:#fff; }
+  .toolbar input[type=text] { flex:1 1 220px; min-width:160px; }
+  .tr { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .btn {
+    display:inline-flex; align-items:center; gap:6px;
+    border-radius:7px; padding:8px 16px; font-size:13px; font-weight:500; cursor:pointer; border:none; transition:.15s;
+  }
+  .btn-primary { background:var(--azul); color:#fff; }
+  .btn-primary:hover { background:var(--azul2); }
+  .btn-outline { background:#fff; color:var(--c4); border:1px solid var(--borda); }
+  .btn-outline:hover { border-color:var(--c3); color:var(--texto); }
+  .btn-sm { padding:4px 10px; font-size:11.5px; }
+  .btn-danger { background:var(--vermelho-bg); color:var(--vermelho); border:1px solid #fca5a5; }
+  .btn-danger:hover { background:#fecaca; }
+
+  /* TABLE */
+  .tw { background:var(--branco); border:1px solid var(--borda); border-radius:var(--r); overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .ts { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead tr { background:var(--azul); color:#fff; }
+  thead th {
+    padding:11px 10px; text-align:left; font-weight:600; font-size:11px;
+    letter-spacing:.4px; text-transform:uppercase; white-space:nowrap;
+    cursor:pointer; user-select:none; border-right:1px solid rgba(255,255,255,.12);
+  }
+  thead th:last-child { border-right:none; }
+  thead th:hover { background:var(--azul2); }
+  tbody tr { border-bottom:1px solid var(--c2); transition:.1s; }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover { background:var(--azul-bg); }
+  tbody tr.even { background:var(--c1); }
+  tbody tr.even:hover { background:var(--azul-bg); }
+  td { padding:9px 10px; vertical-align:middle; }
+  .empty-row td { text-align:center; padding:48px; color:var(--c4); }
+
+  /* BADGES */
+  .badge {
+    display:inline-block; padding:2px 8px; border-radius:5px;
+    font-size:10.5px; font-weight:700; letter-spacing:.3px; white-space:nowrap;
+  }
+  .b-sei    { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+  .b-sigrc  { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+  .b-email  { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+  .b-mds    { background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; }
+  .b-mon    { background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
+  .b-pres   { background:#fce7f3; color:#9d174d; border:1px solid #f9a8d4; }
+  .b-mp     { background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; }
+  .b-outro  { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
+  .b-sim    { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+  .b-nao    { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .b-resp   { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+  .b-pend   { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+  .num { font-weight:700; color:var(--azul); font-size:13px; }
+  .mono { font-family:'Courier New',monospace; font-size:11.5px; }
+
+  /* PAGINAÇÃO */
+  .pagination {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; border-top:1px solid var(--c2);
+    font-size:13px; color:var(--c4);
+  }
+  .page-btns { display:flex; gap:4px; }
+  .page-btns button {
+    width:32px; height:32px; border-radius:6px; border:1px solid var(--borda);
+    background:#fff; font-size:13px; cursor:pointer; transition:.1s;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .page-btns button:hover { border-color:var(--azul2); color:var(--azul); }
+  .page-btns button.active { background:var(--azul); color:#fff; border-color:var(--azul); font-weight:700; }
+  .page-btns button:disabled { opacity:.35; cursor:default; }
+  .per-page { display:flex; align-items:center; gap:8px; }
+  .per-page select { border:1px solid var(--borda); border-radius:6px; padding:4px 8px; font-size:13px; }
+
+  /* MODAL */
+  .overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:200; display:flex; align-items:flex-start; justify-content:center; padding:2rem 1rem; overflow-y:auto; }
+  .overlay.hidden { display:none; }
+  .modal { background:#fff; border-radius:12px; width:100%; max-width:660px; box-shadow:0 20px 60px rgba(0,0,0,.2); animation:sI .2s ease; }
+  @keyframes sI { from{transform:translateY(-16px);opacity:0} to{transform:none;opacity:1} }
+  .mh { padding:18px 22px; border-bottom:1px solid var(--borda); display:flex; align-items:center; justify-content:space-between; background:var(--azul); border-radius:12px 12px 0 0; color:#fff; }
+  .mh h2 { font-size:16px; font-weight:600; }
+  .mc { background:rgba(255,255,255,.2); border:none; color:#fff; width:30px; height:30px; border-radius:50%; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:.15s; }
+  .mc:hover { background:rgba(255,255,255,.35); }
+  .mb { padding:20px 22px; display:flex; flex-direction:column; gap:14px; }
+  .mf { padding:14px 22px; border-top:1px solid var(--borda); display:flex; justify-content:flex-end; gap:10px; background:var(--c1); border-radius:0 0 12px 12px; }
+  .fr { display:grid; gap:12px; }
+  .fr.c2 { grid-template-columns:1fr 1fr; }
+  .fr.c3 { grid-template-columns:1fr 1fr 1fr; }
+  .fi { display:flex; flex-direction:column; gap:5px; }
+  .fi label { font-size:11.5px; font-weight:600; color:var(--c4); text-transform:uppercase; letter-spacing:.4px; }
+  .fi input, .fi select { border:1px solid var(--borda); border-radius:6px; padding:8px 11px; font-size:13px; color:var(--texto); outline:none; transition:.15s; font-family:inherit; background:#fff; }
+  .fi input:focus, .fi select:focus { border-color:var(--azul2); box-shadow:0 0 0 3px rgba(37,103,176,.12); }
+  .fi input.err { border-color:#ef4444; }
+  .rbox { border:1px solid var(--borda); border-radius:8px; padding:14px; background:var(--c1); }
+  .rbox legend { font-size:11.5px; font-weight:600; color:var(--c4); text-transform:uppercase; letter-spacing:.4px; margin-bottom:10px; }
+  .rg { display:flex; gap:20px; margin-bottom:12px; }
+  .rg label { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; }
+  .rs { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .rs.hidden { display:none; }
+
+  /* CONFIRM */
+  .cbox { background:#fff; border-radius:10px; padding:28px; max-width:380px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.2); text-align:center; }
+  .ci { font-size:40px; margin-bottom:12px; }
+  .cbox h3 { font-size:17px; margin-bottom:8px; }
+  .cbox p { color:var(--c4); font-size:13px; margin-bottom:20px; line-height:1.6; }
+  .cb { display:flex; gap:10px; justify-content:center; }
+
+  /* TOAST */
+  #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--texto); color:#fff; padding:11px 22px; border-radius:8px; font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,.2); opacity:0; transition:.25s; pointer-events:none; z-index:999; white-space:nowrap; }
+  #toast.show { opacity:1; }
+
+  /* PRINT */
+  @media print {
+    * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
+    body { background:#fff; font-size:11px; }
+    header,.toolbar,.sg,.no-print,.pagination,#connStatus { display:none!important; }
+    .container { padding:0; max-width:100%; }
+    .tw { box-shadow:none; border:1px solid #ccc; }
+    .ph { display:block!important; margin-bottom:16px; padding-bottom:12px; border-bottom:2px solid var(--azul); }
+    .ts { overflow:visible; }
+    table { font-size:9.5px; page-break-inside:auto; }
+    thead tr { background:var(--azul)!important; }
+    thead th { padding:6px; font-size:9px; }
+    td { padding:5px 6px; }
+    tbody tr { page-break-inside:avoid; }
+    .badge { padding:1px 5px; font-size:8.5px; }
+  }
+  .ph { display:none; }
+
+  /* IMPORTAÇÃO */
+  .modal.wide { max-width:1100px; }
+  .imp-help { font-size:12.5px; color:var(--c4); line-height:1.6; }
+  .imp-help code { background:var(--c2); padding:1px 5px; border-radius:4px; font-size:11.5px; color:var(--texto); }
+  .imp-sum { display:flex; gap:10px; flex-wrap:wrap; }
+  .imp-sum .badge { font-size:12px; padding:5px 10px; }
+  .imp-tw { max-height:52vh; overflow:auto; border:1px solid var(--borda); border-radius:8px; }
+  .imp-tw table { font-size:12px; }
+  .imp-tw thead th { position:sticky; top:0; background:var(--azul); cursor:default; }
+  .imp-tw tr.r-err  { background:var(--vermelho-bg); }
+  .imp-tw tr.r-dup  { background:var(--laranja-bg); }
+  .imp-msg { font-size:11px; color:var(--vermelho); }
+  .imp-tw tr.r-dup .imp-msg { color:var(--laranja); }
+  .imp-opt { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
+  .btn:disabled { opacity:.5; cursor:default; }
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="spin"></div>
+  <span>Conectando ao banco de dados…</span>
+</div>
+
+<!-- STATUS DE CONEXÃO -->
+<div id="connStatus" class="offline no-print">
+  <span class="dot pulse"></span>
+  <span id="connText">Conectando…</span>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="hl">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill="rgba(255,255,255,0.18)"/>
+      <path d="M7 9h14M7 14h10M7 19h8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <div><div class="ht">Controle de Casos Suspeitos</div><div class="hs">Sistema de Gestão de Casos</div></div>
+  </div>
+  <button class="btn-print" onclick="imprimir()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      <rect x="6" y="14" width="12" height="8"/>
+    </svg>
+    Imprimir Relatório
+  </button>
+</header>
+
+<!-- MAIN -->
+<div class="container">
+  <div class="ph" id="ph"></div>
+
+  <!-- STATS -->
+  <div class="sg no-print">
+    <div class="sc total"><div class="sl">Total de Casos</div><div class="sv" id="sTotal">–</div></div>
+    <div class="sc resp" ><div class="sl">Respondidos</div>     <div class="sv" id="sResp">–</div></div>
+    <div class="sc pend" ><div class="sl">Pendentes</div>       <div class="sv" id="sPend">–</div></div>
+    <div class="sc reit" ><div class="sl">Reiterações</div>     <div class="sv" id="sReit">–</div></div>
+    <div class="sc reit" ><div class="sl">Reincidências</div>   <div class="sv" id="sReinc">–</div></div>
+    <div class="sc total" style="border-left-color:#7c3aed"><div class="sl">Exibindo</div><div class="sv" id="sView" style="color:#7c3aed">–</div></div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar no-print">
+    <input type="text" id="busca" placeholder="🔍  Buscar por nome, CPF, SEI, atribuído…" oninput="goPage(1)">
+    <select id="fCanal" onchange="goPage(1)">
+      <option value="">Todos os canais</option>
+      <option>SEI</option><option>SIGRC</option><option>E-MAIL</option>
+      <option>MDS</option><option>Monitoramento interno</option>
+      <option>Presencial</option><option>Ministério Público</option>
+      <option>COMAS</option><option>Outro</option>
+    </select>
+    <select id="fStatus" onchange="goPage(1)">
+      <option value="">Todos os status</option>
+      <option value="respondido">Respondidos</option>
+      <option value="pendente">Pendentes</option>
+    </select>
+    <select id="fReit" onchange="goPage(1)">
+      <option value="">Com/sem reiteração</option>
+      <option value="sim">Com reiteração</option>
+      <option value="nao">Sem reiteração</option>
+    </select>
+    <select id="fReinc" onchange="goPage(1)">
+      <option value="">Com/sem reincidência</option>
+      <option value="sim">Com reincidência</option>
+      <option value="nao">Sem reincidência</option>
+    </select>
+    <div class="tr">
+      <span id="cntLabel" style="font-size:12px;color:var(--c4)"></span>
+      <input type="file" id="impFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="lerPlanilha(this)">
+      <button class="btn btn-outline" onclick="document.getElementById('impFile').click()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><path d="M12 3v12"/></svg>
+        Importar planilha
+      </button>
+      <button class="btn btn-primary" onclick="abrirNovo()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Novo Caso
+      </button>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="tw">
+    <div class="ts">
+      <table id="tbl">
+        <thead><tr>
+          <th onclick="sort('ordem')">N. Ordem<span id="si-ordem"> ↕</span></th>
+          <th onclick="sort('dataRecebimento')">Dt. Recebimento<span id="si-dataRecebimento"> ↕</span></th>
+          <th onclick="sort('canalRecebido')">Canal<span id="si-canalRecebido"> ↕</span></th>
+          <th onclick="sort('numSeiSigrc')">N.º SEI/SIGRC<span id="si-numSeiSigrc"> ↕</span></th>
+          <th onclick="sort('nome')">Nome<span id="si-nome"> ↕</span></th>
+          <th onclick="sort('cpf')">CPF<span id="si-cpf"> ↕</span></th>
+          <th onclick="sort('reiteracao')">Reiteração<span id="si-reiteracao"> ↕</span></th>
+          <th onclick="sort('reincidencia')">Reincidência<span id="si-reincidencia"> ↕</span></th>
+          <th onclick="sort('atribuidoPara')">Atribuído Para<span id="si-atribuidoPara"> ↕</span></th>
+          <th onclick="sort('respondidoEm')">Respondido Em<span id="si-respondidoEm"> ↕</span></th>
+          <th class="no-print">Ações</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <!-- PAGINAÇÃO -->
+    <div class="pagination no-print">
+      <div class="per-page">
+        Registros por página:
+        <select id="perPage" onchange="goPage(1)">
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="999999">Todos</option>
+        </select>
+      </div>
+      <div id="pageInfo" style="font-size:12px"></div>
+      <div class="page-btns" id="pageBtns"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CADASTRO/EDIÇÃO -->
+<div class="overlay hidden" id="mOverlay">
+  <div class="modal">
+    <div class="mh"><h2 id="mTitle">Novo Caso</h2><button class="mc" onclick="fecharModal()">×</button></div>
+    <div class="mb">
+      <input type="hidden" id="eId">
+      <div class="fr c3">
+        <div class="fi"><label>Data de Recebimento *</label><input type="date" id="fData"></div>
+        <div class="fi"><label>Canal Recebido *</label>
+          <select id="fCanal2">
+            <option>SEI</option><option>SIGRC</option><option>E-MAIL</option>
+            <option>MDS</option><option>Monitoramento interno</option>
+            <option>Presencial</option><option>Ministério Público</option>
+            <option>COMAS</option><option>Outro</option>
+          </select>
+        </div>
+        <div class="fi"><label>N.º SEI / SIGRC</label><input type="text" id="fSei" placeholder="Ex: 0001234/2024"></div>
+      </div>
+      <div class="fr c2">
+        <div class="fi"><label>Nome *</label><input type="text" id="fNome" placeholder="Nome completo"></div>
+        <div class="fi"><label>CPF</label><input type="text" id="fCpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)"></div>
+      </div>
+      <div class="rbox">
+        <legend>Reiteração</legend>
+        <div class="rg">
+          <label><input type="radio" name="reit" value="nao" checked onchange="toggleReit()"> Não</label>
+          <label><input type="radio" name="reit" value="sim" onchange="toggleReit()"> Sim</label>
+        </div>
+        <div class="rs hidden" id="rSub">
+          <div class="fi"><label>Data da Reiteração</label><input type="date" id="fRData"></div>
+          <div class="fi"><label>N.º do Ofício</label><input type="text" id="fROfc" placeholder="N.º do ofício"></div>
+        </div>
+      </div>
+      <div class="fr c3">
+        <div class="fi"><label>Reincidência</label>
+          <select id="fReinc2"><option value="nao">Não</option><option value="sim">Sim</option></select>
+        </div>
+        <div class="fi"><label>Atribuído Para</label><input type="text" id="fAtrib" placeholder="Responsável pela análise"></div>
+        <div class="fi"><label>Respondido Em</label><input type="date" id="fResp"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvar()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        <span id="bSalvar">Cadastrar</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRM -->
+<div class="overlay hidden" id="cOverlay">
+  <div class="cbox">
+    <div class="ci">⚠️</div>
+    <h3>Confirmar Exclusão</h3>
+    <p>Esta ação é irreversível.<br>Deseja realmente excluir este caso?</p>
+    <div class="cb">
+      <button class="btn btn-outline" onclick="fecharConfirm()">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmarDel()">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORTAÇÃO -->
+<div class="overlay hidden" id="iOverlay">
+  <div class="modal wide">
+    <div class="mh"><h2>Importar planilha</h2><button class="mc" onclick="fecharImport()">×</button></div>
+    <div class="mb">
+      <div class="imp-help" id="impHelp"></div>
+      <div class="imp-sum" id="impSum"></div>
+      <div class="imp-help" id="impReinc"></div>
+      <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="renderImport()"> Importar também os possíveis duplicados</label>
+      <div class="imp-tw"><table>
+        <thead><tr><th>Linha</th><th>Situação</th><th>Dt. Recebimento</th><th>Canal</th><th>N.º SEI/SIGRC</th><th>Nome</th><th>CPF</th><th>Reincidência</th><th>Atribuído Para</th><th>Respondido Em</th></tr></thead>
+        <tbody id="impBody"></tbody>
+      </table></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="fecharImport()">Cancelar</button>
+      <button class="btn btn-primary" id="impBtn" onclick="confirmarImport()">Importar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════
+// CONFIGURAÇÃO DO FIREBASE
+// ════════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyBeUbSFI45r-t3QppxsX8xEV04EYLqmZ_8",
+  authDomain: "controle-apuracoes.firebaseapp.com",
+  databaseURL: "https://controle-apuracoes-default-rtdb.firebaseio.com",
+  projectId: "controle-apuracoes",
+  storageBucket: "controle-apuracoes.firebasestorage.app",
+  messagingSenderId: "304302436551",
+  appId: "1:304302436551:web:9c95df0754882a789dcee2"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db_ref = firebase.database().ref('casosSuspeitos');
+
+// ── STATE ────────────────────────────────────────────────
+let db = [], sfld = 'ordem', sdir = 'asc', pg = 1, delTarget = null;
+
+// ── FIREBASE: LISTENER EM TEMPO REAL ────────────────────
+// Qualquer pessoa que abrir o link vê os dados sempre atualizados,
+// e qualquer edição é refletida para todos automaticamente.
+db_ref.on('value', (snapshot) => {
+  const val = snapshot.val();
+  db = val ? Object.values(val) : [];
+  document.getElementById('loader').classList.add('hidden');
+  setConn(true);
+  render();
+}, (error) => {
+  console.error('Erro Firebase:', error);
+  setConn(false);
+  toast('⚠ Erro de conexão com o banco de dados.');
+});
+
+// Detecta status de conexão real do Firebase
+firebase.database().ref('.info/connected').on('value', (snap) => {
+  setConn(snap.val() === true);
+});
+
+function setConn(online) {
+  const el = document.getElementById('connStatus');
+  const txt = document.getElementById('connText');
+  const dot = el.querySelector('.dot');
+  if (online) {
+    el.className = 'online no-print';
+    txt.textContent = 'Conectado · tempo real';
+    dot.classList.remove('pulse');
+  } else {
+    el.className = 'offline no-print';
+    txt.textContent = 'Reconectando…';
+    dot.classList.add('pulse');
+  }
+}
+
+async function saveDb() {
+  // Não usado diretamente; gravações são feitas registro a registro (ver salvar/confirmarDel)
+}
+
+// ── UTILS ────────────────────────────────────────────────
+const fd = s => s ? s.split('-').reverse().join('/') : '—';
+const nextId = () => db.length ? Math.max(...db.map(r=>r.id))+1 : 1;
+const nextOrd = () => db.length ? Math.max(...db.map(r=>r.ordem))+1 : 1;
+
+function maskCpf(el) {
+  let v = el.value.replace(/\D/g,'').slice(0,11);
+  if (v.length>9) v=v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,'$1.$2.$3-$4');
+  else if(v.length>6) v=v.replace(/(\d{3})(\d{3})(\d{1,3})/,'$1.$2.$3');
+  else if(v.length>3) v=v.replace(/(\d{3})(\d{1,3})/,'$1.$2');
+  el.value=v;
+}
+function toast(msg,dur=2800){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),dur);
+}
+const CANAL_CLS = {
+  'SEI':'b-sei','SIGRC':'b-sigrc','E-MAIL':'b-email','MDS':'b-mds',
+  'Monitoramento interno':'b-mon','Presencial':'b-pres',
+  'Ministério Público':'b-mp','COMAS':'b-outro','Outro':'b-outro'
+};
+function badgeCanal(v){ return `<span class="badge ${CANAL_CLS[v]||'b-outro'}">${v||'—'}</span>`; }
+
+// ── FILTER + SORT ────────────────────────────────────────
+function filtrar() {
+  const q = document.getElementById('busca').value.toLowerCase();
+  const c = document.getElementById('fCanal').value;
+  const s = document.getElementById('fStatus').value;
+  const ri = document.getElementById('fReit').value;
+  const rc = document.getElementById('fReinc').value;
+  return db.filter(r => {
+    if(q && !`${r.nome} ${r.cpf} ${r.numSeiSigrc} ${r.atribuidoPara} ${r.ordem}`.toLowerCase().includes(q)) return false;
+    if(c && !r.canalRecebido?.includes(c)) return false;
+    if(s==='respondido' && !r.respondidoEm) return false;
+    if(s==='pendente'   &&  r.respondidoEm) return false;
+    if(ri==='sim' && r.reiteracao!=='sim') return false;
+    if(ri==='nao' && r.reiteracao==='sim') return false;
+    if(rc==='sim' && r.reincidencia!=='sim') return false;
+    if(rc==='nao' && r.reincidencia==='sim') return false;
+    return true;
+  });
+}
+function ordenar(lst) {
+  return [...lst].sort((a,b)=>{
+    let va=a[sfld]??'', vb=b[sfld]??'';
+    if(sfld==='ordem'){va=+va;vb=+vb;}
+    if(va<vb) return sdir==='asc'?-1:1;
+    if(va>vb) return sdir==='asc'?1:-1;
+    return 0;
+  });
+}
+function sort(f){
+  if(sfld===f) sdir=sdir==='asc'?'desc':'asc'; else{sfld=f;sdir='asc';}
+  render();
+}
+
+// ── STATS ────────────────────────────────────────────────
+function stats(filtered) {
+  document.getElementById('sTotal').textContent = db.length;
+  document.getElementById('sResp').textContent  = db.filter(x=>x.respondidoEm).length;
+  document.getElementById('sPend').textContent  = db.filter(x=>!x.respondidoEm).length;
+  document.getElementById('sReit').textContent  = db.filter(x=>x.reiteracao==='sim').length;
+  document.getElementById('sReinc').textContent = db.filter(x=>x.reincidencia==='sim').length;
+  document.getElementById('sView').textContent  = filtered.length;
+}
+
+// ── PAGINATOR ────────────────────────────────────────────
+function goPage(p){ pg=p; render(); }
+
+function renderPaginator(total, pp) {
+  const pages = Math.max(1, Math.ceil(total/pp));
+  if(pg>pages) pg=pages;
+  const start=(pg-1)*pp+1, end=Math.min(pg*pp,total);
+  document.getElementById('pageInfo').textContent = total===0 ? '' : `${start}–${end} de ${total}`;
+
+  const cont = document.getElementById('pageBtns');
+  if(pp>=999999){ cont.innerHTML=''; return; }
+  let html = `<button onclick="goPage(${pg-1})" ${pg===1?'disabled':''}>‹</button>`;
+
+  const W=2;
+  let lo=Math.max(1,pg-W), hi=Math.min(pages,pg+W);
+  if(lo>1) html+=`<button onclick="goPage(1)">1</button>${lo>2?'<button disabled>…</button>':''}`;
+  for(let i=lo;i<=hi;i++) html+=`<button class="${i===pg?'active':''}" onclick="goPage(${i})">${i}</button>`;
+  if(hi<pages) html+=`${hi<pages-1?'<button disabled>…</button>':''}<button onclick="goPage(${pages})">${pages}</button>`;
+  html+=`<button onclick="goPage(${pg+1})" ${pg===pages?'disabled':''}>›</button>`;
+  cont.innerHTML=html;
+}
+
+// ── RENDER TABLE ─────────────────────────────────────────
+function render() {
+  const filtered = ordenar(filtrar());
+  stats(filtered);
+
+  const pp = parseInt(document.getElementById('perPage').value)||25;
+  renderPaginator(filtered.length, pp);
+  const page = pp>=999999 ? filtered : filtered.slice((pg-1)*pp, pg*pp);
+
+  document.getElementById('cntLabel').textContent = `${filtered.length} registro${filtered.length!==1?'s':''}`;
+
+  ['ordem','dataRecebimento','canalRecebido','numSeiSigrc','nome','cpf','reiteracao','reincidencia','atribuidoPara','respondidoEm'].forEach(f=>{
+    const el=document.getElementById('si-'+f);
+    if(el) el.textContent = sfld===f?(sdir==='asc'?' ▲':' ▼'):' ↕';
+  });
+
+  const tbody = document.getElementById('tbody');
+  if(page.length===0){
+    tbody.innerHTML=`<tr class="empty-row"><td colspan="11">${db.length===0?'Nenhum caso cadastrado. Clique em «Novo Caso» para começar.':'Nenhum resultado com os filtros aplicados.'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = page.map((r,i)=>{
+    const reit = r.reiteracao==='sim'
+      ? `<span class="badge b-sim" title="Data:${fd(r.reitData)} | Ofício:${r.reitOficio||'—'}">⚠ Sim</span>`
+      : `<span class="badge b-nao">Não</span>`;
+    const reinc = r.reincidencia==='sim'
+      ? `<span class="badge b-sim">Sim</span>`
+      : `<span class="badge b-nao">Não</span>`;
+    const resp = r.respondidoEm
+      ? `<span class="badge b-resp">✓ ${fd(r.respondidoEm)}</span>`
+      : `<span class="badge b-pend">Pendente</span>`;
+    return `<tr class="${i%2?'even':''}">
+      <td><span class="num">${String(r.ordem).padStart(3,'0')}</span></td>
+      <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td>
+      <td>${badgeCanal(r.canalRecebido)}</td>
+      <td class="mono" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.numSeiSigrc||''}">${r.numSeiSigrc||'—'}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nome||''}">${r.nome||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${r.cpf||'—'}</td>
+      <td>${reit}</td>
+      <td>${reinc}</td>
+      <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.atribuidoPara||''}">${r.atribuidoPara||'—'}</td>
+      <td style="white-space:nowrap">${resp}</td>
+      <td class="no-print" style="white-space:nowrap">
+        <button class="btn btn-outline btn-sm" onclick="editar(${r.id})">Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="pedirDel(${r.id})">Excluir</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── MODAL ────────────────────────────────────────────────
+function abrirNovo(){
+  document.getElementById('mTitle').textContent='Novo Caso';
+  document.getElementById('bSalvar').textContent='Cadastrar';
+  document.getElementById('eId').value='';
+  ['fData','fSei','fRData','fROfc','fCpf','fAtrib','fResp'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('fNome').value='';
+  document.getElementById('fCanal2').value='MDS';
+  document.getElementById('fReinc2').value='nao';
+  document.querySelector('input[name=reit][value=nao]').checked=true;
+  document.getElementById('rSub').classList.add('hidden');
+  document.getElementById('mOverlay').classList.remove('hidden');
+}
+function fecharModal(){ document.getElementById('mOverlay').classList.add('hidden'); }
+function toggleReit(){
+  const v=document.querySelector('input[name=reit]:checked').value;
+  document.getElementById('rSub').classList.toggle('hidden',v!=='sim');
+}
+function editar(id){
+  const r=db.find(x=>x.id===id); if(!r) return;
+  document.getElementById('mTitle').textContent='Editar Caso';
+  document.getElementById('bSalvar').textContent='Salvar Alterações';
+  document.getElementById('eId').value=id;
+  document.getElementById('fData').value=r.dataRecebimento||'';
+  const selCanal=document.getElementById('fCanal2');
+  if(r.canalRecebido && ![...selCanal.options].some(o=>o.value===r.canalRecebido)) selCanal.add(new Option(r.canalRecebido));
+  selCanal.value=r.canalRecebido||'MDS';
+  document.getElementById('fSei').value=r.numSeiSigrc||'';
+  document.getElementById('fNome').value=r.nome||'';
+  document.getElementById('fCpf').value=r.cpf||'';
+  document.querySelector(`input[name=reit][value="${r.reiteracao||'nao'}"]`).checked=true;
+  document.getElementById('rSub').classList.toggle('hidden',r.reiteracao!=='sim');
+  document.getElementById('fRData').value=r.reitData||'';
+  document.getElementById('fROfc').value=r.reitOficio||'';
+  document.getElementById('fReinc2').value=r.reincidencia==='sim'?'sim':'nao';
+  document.getElementById('fAtrib').value=r.atribuidoPara||'';
+  document.getElementById('fResp').value=r.respondidoEm||'';
+  document.getElementById('mOverlay').classList.remove('hidden');
+}
+async function salvar(){
+  const id=document.getElementById('eId').value;
+  const nome=document.getElementById('fNome').value.trim();
+  const data=document.getElementById('fData').value;
+  let ok=true;
+  ['fNome'].forEach(fid=>{ const el=document.getElementById(fid); el.classList.toggle('err',!el.value.trim()); if(!el.value.trim()) ok=false; });
+  if(!ok){ toast('⚠ Preencha os campos obrigatórios.'); return; }
+  const reit=document.querySelector('input[name=reit]:checked').value;
+  const reg={
+    dataRecebimento:data,
+    canalRecebido:document.getElementById('fCanal2').value,
+    numSeiSigrc:document.getElementById('fSei').value.trim(),
+    nome, cpf:document.getElementById('fCpf').value.trim(),
+    reiteracao:reit,
+    reincidencia:document.getElementById('fReinc2').value,
+    reitData:reit==='sim'?document.getElementById('fRData').value:'',
+    reitOficio:reit==='sim'?document.getElementById('fROfc').value.trim():'',
+    atribuidoPara:document.getElementById('fAtrib').value.trim(),
+    respondidoEm:document.getElementById('fResp').value,
+  };
+  try {
+    if(id){
+      reg.id = +id;
+      const atual = db.find(x=>x.id===+id);
+      reg.ordem = atual ? atual.ordem : nextOrd();
+      await db_ref.child(id).set(reg);
+      toast('✓ Caso atualizado.');
+    } else {
+      reg.id=nextId(); reg.ordem=nextOrd();
+      await db_ref.child(String(reg.id)).set(reg);
+      toast('✓ Caso cadastrado.');
+    }
+    fecharModal();
+    // render() é disparado automaticamente pelo listener 'value' do Firebase
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao salvar. Verifique sua conexão.');
+  }
+}
+
+// ── DELETE ───────────────────────────────────────────────
+function pedirDel(id){ delTarget=id; document.getElementById('cOverlay').classList.remove('hidden'); }
+function fecharConfirm(){ delTarget=null; document.getElementById('cOverlay').classList.add('hidden'); }
+async function confirmarDel(){
+  try {
+    await db_ref.child(String(delTarget)).remove();
+    fecharConfirm();
+    toast('Caso excluído.');
+    // render() é disparado automaticamente pelo listener 'value' do Firebase
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao excluir. Verifique sua conexão.');
+  }
+}
+
+// ── IMPORTAÇÃO DE PLANILHA ───────────────────────────────
+// Lê um arquivo Excel/CSV, mostra uma prévia e ACRESCENTA os registros novos.
+// Nos registros já existentes, só pode marcar Reincidência = Sim (nunca apaga nada).
+let impLinhas = [], impInfo = '', impPlano = null;
+
+const semAcento = s => String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+const chaveCol  = s => semAcento(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Nome da coluna na planilha (sem acentos, espaços e símbolos) → campo do sistema
+const IMP_COLUNAS = {
+  canal:'canalRecebido', canalrecebido:'canalRecebido',
+  sigrcsei:'numSeiSigrc', seisigrc:'numSeiSigrc', sei:'numSeiSigrc', sigrc:'numSeiSigrc', nseisigrc:'numSeiSigrc',
+  nome:'nome',
+  cpf:'cpf',
+  datarecebimento:'dataRecebimento', dtrecebimento:'dataRecebimento',
+  dataresposta:'respondidoEm', respondidoem:'respondidoEm',
+  reincidencia:'reincidencia', reincidente:'reincidencia', reinscidencia:'reincidencia', reicidencia:'reincidencia',
+  tecnicor:'atribuidoPara', tecnico:'atribuidoPara', tecnica:'atribuidoPara', atribuidopara:'atribuidoPara', responsavel:'atribuidoPara',
+};
+const IMP_CANAIS = ['SEI','SIGRC','E-MAIL','MDS','Monitoramento interno','Presencial','Ministério Público','COMAS','Outro'];
+
+function impCanal(v){
+  v = String(v??'').trim();
+  if(!v) return 'Outro';
+  const k = chaveCol(v);
+  return IMP_CANAIS.find(c=>chaveCol(c)===k) || v;
+}
+function impSimNao(v){
+  const k = chaveCol(v);
+  if(!k || ['nao','n','0','false','no'].includes(k)) return {v:'nao'};
+  if(['sim','s','x','1','true','yes'].includes(k)) return {v:'sim'};
+  return {v:'nao', erro:`valor não reconhecido: "${v}" (use Sim ou Não)`};
+}
+function impCpf(v){
+  const orig = String(v??'').trim();
+  if(!orig) return {v:''};
+  let d = orig.replace(/\D/g,'');
+  // O Excel costuma apagar os zeros à esquerda do CPF quando a célula é numérica
+  if(d.length>=8 && d.length<11) d = d.padStart(11,'0');
+  if(d.length!==11) return {v:orig, aviso:'CPF com quantidade de dígitos diferente de 11'};
+  return {v:d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')};
+}
+function impData(v){
+  if(v===null || v===undefined || String(v).trim()==='') return {v:''};
+  let y,m,d;
+  if(typeof v==='number'){                       // data numérica do Excel
+    const p = XLSX.SSF.parse_date_code(v);
+    if(p){ y=p.y; m=p.m; d=p.d; }
+  } else {
+    const s = String(v).trim();
+    let r;
+    if((r = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))){ d=+r[1]; m=+r[2]; y=+r[3]; if(y<100) y+=2000; }
+    else if((r = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))){ y=+r[1]; m=+r[2]; d=+r[3]; }
+  }
+  const dt = y ? new Date(y, m-1, d) : null;
+  if(!dt || dt.getFullYear()!==y || dt.getMonth()!==m-1 || dt.getDate()!==d || y<1990 || y>2100)
+    return {v:'', erro:`data inválida: "${v}"`};
+  return {v:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
+}
+// Mesmo CPF (ou mesmo nome, se não houver CPF) + mesmo número SEI/SIGRC + mesma data de recebimento
+// = possível duplicado. Casos da mesma pessoa em datas diferentes são reincidências, não duplicados.
+function chaveDup(r){
+  const quem = r.cpf ? r.cpf.replace(/\D/g,'') : chaveCol(r.nome);
+  return quem ? `${quem}|${chaveCol(r.numSeiSigrc)}|${r.dataRecebimento||''}` : '';
+}
+
+function lerPlanilha(input){
+  const file = input.files[0];
+  input.value = '';                               // permite escolher o mesmo arquivo de novo
+  if(!file) return;
+  if(typeof XLSX==='undefined'){ toast('⚠ Não foi possível carregar o leitor de planilhas. Verifique a internet.'); return; }
+  const csv = /\.csv$/i.test(file.name);
+  const fr = new FileReader();
+  fr.onload = e => {
+    try {
+      let wb;
+      if(csv){
+        // CSV salvo pelo Excel costuma vir em Windows-1252; se não for UTF-8 válido, usa essa codificação.
+        // É lido como texto puro (raw) para o leitor não trocar dia e mês das datas.
+        let txt;
+        try { txt = new TextDecoder('utf-8', {fatal:true}).decode(e.target.result); }
+        catch(_) { txt = new TextDecoder('windows-1252').decode(e.target.result); }
+        wb = XLSX.read(txt.replace(/^\uFEFF/,''), {type:'string', raw:true});
+      } else {
+        wb = XLSX.read(e.target.result, {type:'array'});
+      }
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const linhas = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+      prepararImport(file.name, linhas);
+    } catch(err) {
+      console.error(err);
+      toast('⚠ Não foi possível ler o arquivo. Use .xlsx, .xls ou .csv.');
+    }
+  };
+  fr.readAsArrayBuffer(file);
+}
+
+function prepararImport(nomeArq, linhas){
+  const cab = (linhas[0]||[]).map(h=>IMP_COLUNAS[chaveCol(h)]||null);
+  const reconhecidas = (linhas[0]||[]).filter((h,i)=>cab[i]).map(h=>String(h).trim());
+  const ignoradas = (linhas[0]||[]).filter((h,i)=>!cab[i] && String(h).trim()).map(h=>String(h).trim());
+  if(!cab.includes('nome')){
+    toast('⚠ A planilha precisa ter uma coluna "nome" na primeira linha.', 4500);
+    return;
+  }
+  const existentes = new Set(db.map(chaveDup).filter(Boolean));
+  const noArquivo = new Set();
+  impLinhas = [];
+  linhas.slice(1).forEach((lin, i)=>{
+    if(!lin.some(c=>String(c).trim()!=='')) return;   // linha em branco
+    const bruto = {};
+    cab.forEach((campo, j)=>{ if(campo && bruto[campo]===undefined) bruto[campo] = lin[j]; });
+    const erros = [], avisos = [];
+    const dRec = impData(bruto.dataRecebimento), dResp = impData(bruto.respondidoEm), cpf = impCpf(bruto.cpf);
+    if(dRec.erro)  erros.push('Recebimento: '+dRec.erro);
+    if(dResp.erro) erros.push('Resposta: '+dResp.erro);
+    if(cpf.aviso)  avisos.push(cpf.aviso);
+    const reinc = impSimNao(bruto.reincidencia);
+    if(reinc.erro) erros.push('Reincidência: '+reinc.erro);
+    const reg = {
+      dataRecebimento: dRec.v,
+      canalRecebido: impCanal(bruto.canalRecebido),
+      numSeiSigrc: String(bruto.numSeiSigrc??'').trim(),
+      nome: String(bruto.nome??'').trim(),
+      cpf: cpf.v,
+      reiteracao:'nao', reitData:'', reitOficio:'',
+      reincidencia: reinc.v,
+      atribuidoPara: String(bruto.atribuidoPara??'').trim(),
+      respondidoEm: dResp.v,
+    };
+    if(!reg.nome) erros.push('nome em branco');
+    let dup = false;
+    const k = chaveDup(reg);
+    if(!erros.length && k){
+      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesma pessoa, mesmo SEI e mesma data)'); }
+      else if(noArquivo.has(k)){ dup = true; avisos.push('repetido nesta planilha'); }
+      noArquivo.add(k);
+    }
+    impLinhas.push({linha:i+2, reg, erros, avisos, dup});
+  });
+
+  impInfo =
+    `Arquivo <b>${esc(nomeArq)}</b>. Colunas reconhecidas: ${reconhecidas.map(h=>`<code>${esc(h)}</code>`).join(' ')}`+
+    (ignoradas.length ? `<br>Colunas ignoradas: ${ignoradas.map(h=>`<code>${esc(h)}</code>`).join(' ')}` : '')+
+    `<br>Nada é gravado até você clicar em <b>Importar</b>. A importação acrescenta os novos casos; nos registros já cadastrados, ela só pode marcar <b>Reincidência = Sim</b> (nunca apaga nem altera outros campos).`;
+  const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
+  document.getElementById('impDupOpt').style.display = dup ? '' : 'none';
+  document.getElementById('impDup').checked = false;
+  renderImport();
+  document.getElementById('iOverlay').classList.remove('hidden');
+}
+
+// ── REINCIDÊNCIA AUTOMÁTICA ──────────────────────────────
+// A mesma pessoa é reconhecida pelo CPF quando os dois registros têm CPF;
+// se um deles não tiver CPF, pelo nome (sem diferenciar acentos/maiúsculas).
+// Em cada pessoa com mais de um caso, todos os casos depois do primeiro
+// (pela data de recebimento) ficam com Reincidência = Sim — inclusive o mais recente.
+const normNome = s => semAcento(s).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const soDig = s => String(s??'').replace(/\D/g,'');
+
+function calcReincidencias(novas){
+  const maxOrd = db.length ? Math.max(...db.map(r=>+r.ordem||0)) : 0;
+  const itens = [
+    ...db.map(r=>({r, existente:true, seq:+r.ordem||0})),
+    ...novas.map((l,i)=>({r:l.reg, linha:l, existente:false, seq:maxOrd+1+i})),
+  ];
+  const pai = itens.map((_,i)=>i);
+  const raiz = i => { while(pai[i]!==i){ pai[i]=pai[pai[i]]; i=pai[i]; } return i; };
+  const unir = (a,b) => { a=raiz(a); b=raiz(b); if(a!==b) pai[b]=a; };
+  const porCpf = {}, porNome = {};
+  itens.forEach((it,i)=>{
+    const c = soDig(it.r.cpf), n = normNome(it.r.nome);
+    if(c.length>=8) (porCpf[c] ||= []).push(i);
+    if(n) (porNome[n] ||= []).push(i);
+  });
+  Object.values(porCpf).forEach(g=>g.forEach(i=>unir(g[0],i)));
+  Object.values(porNome).forEach(g=>{
+    const semCpf = g.filter(i=>soDig(itens[i].r.cpf).length<8);
+    semCpf.forEach(i=>g.forEach(j=>unir(i,j)));
+  });
+  const grupos = {};
+  itens.forEach((it,i)=>(grupos[raiz(i)] ||= []).push(it));
+  const novasSim = new Map(), existentesSim = [];
+  Object.values(grupos).forEach(g=>{
+    if(g.length<2 || g.every(it=>it.existente)) return;   // só pessoas que aparecem na planilha
+    g.sort((a,b)=> (a.r.dataRecebimento||'').localeCompare(b.r.dataRecebimento||'') || a.seq-b.seq);
+    const primeiro = g[0];
+    const ref = primeiro.existente ? `do registro N.º ${String(primeiro.r.ordem).padStart(3,'0')}` : `da linha ${primeiro.linha.linha} da planilha`;
+    g.slice(1).forEach(it=>{
+      if(it.existente){ if(it.r.reincidencia!=='sim') existentesSim.push(it.r); }
+      else novasSim.set(it.linha, `reincidência: mesma pessoa ${ref}`);
+    });
+  });
+  return {novasSim, existentesSim};
+}
+
+function renderImport(){
+  const lst = linhasParaImportar();
+  const {novasSim, existentesSim} = calcReincidencias(lst);
+  impPlano = {lst, novasSim, existentesSim};
+  const ok = impLinhas.filter(l=>!l.erros.length && !l.dup).length;
+  const dup = impLinhas.filter(l=>!l.erros.length && l.dup).length;
+  const err = impLinhas.filter(l=>l.erros.length).length;
+  const nReinc = lst.filter(l=>l.reg.reincidencia==='sim' || novasSim.has(l)).length;
+  document.getElementById('impHelp').innerHTML = impInfo;
+  document.getElementById('impSum').innerHTML =
+    `<span class="badge b-resp">✓ ${ok} novo${ok!==1?'s':''}</span>`+
+    `<span class="badge b-pend">⚠ ${dup} possíve${dup!==1?'is':'l'} duplicado${dup!==1?'s':''}</span>`+
+    `<span class="badge b-sim">✕ ${err} com erro (não ser${err!==1?'ão':'á'} importado${err!==1?'s':''})</span>`+
+    `<span class="badge b-mds">↻ ${nReinc} reincidência${nReinc!==1?'s':''} na planilha</span>`+
+    (existentesSim.length ? `<span class="badge b-mds">↻ ${existentesSim.length} registro${existentesSim.length!==1?'s':''} já cadastrado${existentesSim.length!==1?'s':''} passa${existentesSim.length!==1?'m':''} a Reincidência = Sim</span>` : '');
+  document.getElementById('impReinc').innerHTML = existentesSim.length
+    ? `<b>Registros já cadastrados que serão marcados com Reincidência = Sim</b> (são mais recentes que um caso da mesma pessoa na planilha):<br>`+
+      existentesSim.map(r=>`N.º ${String(r.ordem).padStart(3,'0')} — ${esc(r.nome)} (${fd(r.dataRecebimento)})`).join('<br>')
+    : '';
+  document.getElementById('impBody').innerHTML = impLinhas.length ? impLinhas.map(l=>{
+    const r = l.reg;
+    const vai = lst.includes(l);
+    const sit = l.erros.length ? '<span class="badge b-sim">Erro</span>'
+              : l.dup ? '<span class="badge b-pend">Duplicado?</span>'
+              : '<span class="badge b-resp">Novo</span>';
+    const msgs = [...l.erros, ...l.avisos];
+    if(vai && novasSim.has(l)) msgs.push(novasSim.get(l));
+    const reinc = vai && (r.reincidencia==='sim' || novasSim.has(l));
+    return `<tr class="${l.erros.length?'r-err':l.dup?'r-dup':''}">
+      <td>${l.linha}</td><td>${sit}${msgs.length?`<div class="imp-msg">${msgs.map(esc).join('<br>')}</div>`:''}</td>
+      <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td><td>${esc(r.canalRecebido)}</td>
+      <td class="mono">${esc(r.numSeiSigrc)||'—'}</td><td>${esc(r.nome)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
+      <td>${reinc?'<span class="badge b-sim">Sim</span>':(vai?'Não':'—')}</td><td>${esc(r.atribuidoPara)||'—'}</td>
+      <td style="white-space:nowrap">${fd(r.respondidoEm)}</td></tr>`;
+  }).join('') : '<tr class="empty-row"><td colspan="10">A planilha não tem linhas com dados.</td></tr>';
+  const n = lst.length;
+  const b = document.getElementById('impBtn');
+  b.textContent = n ? `Importar ${n} registro${n!==1?'s':''}` : 'Nada para importar';
+  b.disabled = !n;
+}
+
+function linhasParaImportar(){
+  const comDup = document.getElementById('impDup').checked;
+  return impLinhas.filter(l=>!l.erros.length && (comDup || !l.dup));
+}
+function fecharImport(){ impLinhas = []; impPlano = null; document.getElementById('iOverlay').classList.add('hidden'); }
+
+async function confirmarImport(){
+  if(!impPlano || !impPlano.lst.length) return;
+  const {lst, novasSim, existentesSim} = impPlano;
+  const b = document.getElementById('impBtn');
+  b.disabled = true; b.textContent = 'Importando…';
+  let id = nextId(), ordem = nextOrd();
+  const mudancas = {};
+  lst.forEach(l=>{
+    const reg = {...l.reg, id, ordem};
+    if(novasSim.has(l)) reg.reincidencia = 'sim';
+    mudancas[String(id)] = reg; id++; ordem++;
+  });
+  // Nos registros já cadastrados, só o campo reincidencia é alterado
+  existentesSim.forEach(r=>{ mudancas[`${r.id}/reincidencia`] = 'sim'; });
+  try {
+    // update() grava tudo de uma vez (ou nada, se falhar)
+    await db_ref.update(mudancas);
+    fecharImport();
+    toast(`✓ ${lst.length} registro${lst.length!==1?'s':''} importado${lst.length!==1?'s':''}`+
+      (existentesSim.length ? ` e ${existentesSim.length} marcado${existentesSim.length!==1?'s':''} como reincidência.` : '.'), 4500);
+  } catch(e) {
+    console.error(e);
+    toast('⚠ Erro ao importar. Nada foi gravado. Verifique sua conexão.', 4500);
+    renderImport();
+  }
+}
+
+// ── PRINT ────────────────────────────────────────────────
+function imprimir(){
+  const f=ordenar(filtrar());
+  document.getElementById('ph').innerHTML=`
+    <table style="width:100%;border:none;margin-bottom:8px"><tr>
+      <td style="border:none;padding:0"><div style="font-size:20px;font-weight:700;color:#1a4f8a">CONTROLE DE CASOS SUSPEITOS</div>
+        <div style="font-size:11px;color:#555;margin-top:2px">Gerado em: ${new Date().toLocaleString('pt-BR')} | Total exibido: ${f.length} registros</div></td>
+    </tr></table>`;
+  window.print();
+}
+
+// ── INIT ─────────────────────────────────────────────────
+document.getElementById('perPage').value = '25';
+document.querySelectorAll('input[name=reit]').forEach(r=>r.addEventListener('change',toggleReit));
+</script>
+</body>
+</html>
