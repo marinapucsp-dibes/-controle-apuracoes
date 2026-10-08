@@ -223,6 +223,7 @@
     td { padding:5px 6px; }
     tbody tr { page-break-inside:avoid; }
     .badge { padding:1px 5px; font-size:8.5px; }
+    tr.obs-row.hidden { display:table-row!important; }
   }
   .ph { display:none; }
 
@@ -241,6 +242,16 @@
   .imp-tw tr.r-dup .imp-msg { color:var(--laranja); }
   .imp-opt { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
   .btn:disabled { opacity:.5; cursor:default; }
+
+  /* OBSERVAÇÃO (VER MAIS) */
+  .fi textarea { border:1px solid var(--borda); border-radius:6px; padding:8px 11px; font-size:13px; color:var(--texto); outline:none; font-family:inherit; background:#fff; min-height:90px; resize:vertical; }
+  .fi textarea:focus { border-color:var(--azul2); box-shadow:0 0 0 3px rgba(37,103,176,.12); }
+  .ver-mais { align-self:flex-start; background:none; border:none; color:var(--azul2); font-size:13px; font-weight:600; cursor:pointer; padding:0; }
+  .ver-mais:hover { text-decoration:underline; }
+  .hidden { display:none; }
+  tr.obs-row td { background:var(--azul-bg); color:var(--texto); font-size:12.5px; white-space:pre-wrap; padding:10px 14px 12px; border-left:3px solid var(--azul2); }
+  tr.obs-row.hidden { display:none; }
+  .btn-obs { color:var(--azul); }
 </style>
 </head>
 <body>
@@ -291,7 +302,7 @@
 
   <!-- TOOLBAR -->
   <div class="toolbar no-print">
-    <input type="text" id="busca" placeholder="🔍  Buscar por nome, CPF, SEI, atribuído…" oninput="goPage(1)">
+    <input type="text" id="busca" placeholder="🔍  Buscar por nome, CPF, dados de referência, atribuído, observação…" oninput="goPage(1)">
     <select id="fCanal" onchange="goPage(1)">
       <option value="">Todos os canais</option>
       <option>SEI</option><option>SIGRC</option><option>E-MAIL</option>
@@ -336,7 +347,7 @@
           <th onclick="sort('ordem')">N. Ordem<span id="si-ordem"> ↕</span></th>
           <th onclick="sort('dataRecebimento')">Dt. Recebimento<span id="si-dataRecebimento"> ↕</span></th>
           <th onclick="sort('canalRecebido')">Canal<span id="si-canalRecebido"> ↕</span></th>
-          <th onclick="sort('numSeiSigrc')">N.º SEI/SIGRC<span id="si-numSeiSigrc"> ↕</span></th>
+          <th onclick="sort('numSeiSigrc')">Dados de Referência<span id="si-numSeiSigrc"> ↕</span></th>
           <th onclick="sort('nome')">Nome<span id="si-nome"> ↕</span></th>
           <th onclick="sort('cpf')">CPF<span id="si-cpf"> ↕</span></th>
           <th onclick="sort('reiteracao')">Reiteração<span id="si-reiteracao"> ↕</span></th>
@@ -374,18 +385,19 @@
       <div class="fr c3">
         <div class="fi"><label>Data de Recebimento *</label><input type="date" id="fData"></div>
         <div class="fi"><label>Canal Recebido *</label>
-          <select id="fCanal2">
+          <select id="fCanal2" onchange="toggleCanal()">
             <option>SEI</option><option>SIGRC</option><option>E-MAIL</option>
             <option>MDS</option><option>Monitoramento interno</option>
             <option>Presencial</option><option>Ministério Público</option>
             <option>COMAS</option><option>Outro</option>
           </select>
+          <input type="text" id="fCanalOutro" class="hidden" placeholder="Digite o canal">
         </div>
-        <div class="fi"><label>N.º SEI / SIGRC</label><input type="text" id="fSei" placeholder="Ex: 0001234/2024"></div>
+        <div class="fi"><label>Dados de Referência</label><input type="text" id="fSei" placeholder="Ex: SEI 0001234/2024"></div>
       </div>
       <div class="fr c2">
         <div class="fi"><label>Nome *</label><input type="text" id="fNome" placeholder="Nome completo"></div>
-        <div class="fi"><label>CPF</label><input type="text" id="fCpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCpf(this)"></div>
+        <div class="fi"><label>CPF</label><input type="text" id="fCpf" placeholder="00000000000" maxlength="11" inputmode="numeric" oninput="maskCpf(this)"></div>
       </div>
       <div class="rbox">
         <legend>Reiteração</legend>
@@ -405,6 +417,8 @@
         <div class="fi"><label>Atribuído Para</label><input type="text" id="fAtrib" placeholder="Responsável pela análise"></div>
         <div class="fi"><label>Respondido Em</label><input type="date" id="fResp"></div>
       </div>
+      <button type="button" class="ver-mais" id="bObs" onclick="toggleObs()">+ Ver mais (observação)</button>
+      <div class="fi hidden" id="obsBox"><label>Observação</label><textarea id="fObs" placeholder="Digite aqui as observações sobre este registro"></textarea></div>
     </div>
     <div class="mf">
       <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
@@ -439,7 +453,7 @@
       <div class="imp-help" id="impReinc"></div>
       <label class="imp-opt" id="impDupOpt"><input type="checkbox" id="impDup" onchange="renderImport()"> Importar também os possíveis duplicados</label>
       <div class="imp-tw"><table>
-        <thead><tr><th>Linha</th><th>Situação</th><th>Dt. Recebimento</th><th>Canal</th><th>N.º SEI/SIGRC</th><th>Nome</th><th>CPF</th><th>Reincidência</th><th>Atribuído Para</th><th>Respondido Em</th></tr></thead>
+        <thead><tr><th>Linha</th><th>Situação</th><th>Dt. Recebimento</th><th>Canal</th><th>Dados de Referência</th><th>Nome</th><th>CPF</th><th>Reincidência</th><th>Atribuído Para</th><th>Respondido Em</th></tr></thead>
         <tbody id="impBody"></tbody>
       </table></div>
     </div>
@@ -471,6 +485,7 @@ const db_ref = firebase.database().ref('registros');
 
 // ── STATE ────────────────────────────────────────────────
 let db = [], sfld = 'ordem', sdir = 'asc', pg = 1, delTarget = null;
+const obsAbertas = new Set();   // registros com a observação aberta na tabela
 
 // ── FIREBASE: LISTENER EM TEMPO REAL ────────────────────
 // Qualquer pessoa que abrir o link vê os dados sempre atualizados,
@@ -516,13 +531,10 @@ const fd = s => s ? s.split('-').reverse().join('/') : '—';
 const nextId = () => db.length ? Math.max(...db.map(r=>r.id))+1 : 1;
 const nextOrd = () => db.length ? Math.max(...db.map(r=>r.ordem))+1 : 1;
 
-function maskCpf(el) {
-  let v = el.value.replace(/\D/g,'').slice(0,11);
-  if (v.length>9) v=v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,'$1.$2.$3-$4');
-  else if(v.length>6) v=v.replace(/(\d{3})(\d{3})(\d{1,3})/,'$1.$2.$3');
-  else if(v.length>3) v=v.replace(/(\d{3})(\d{1,3})/,'$1.$2');
-  el.value=v;
-}
+// CPF sem pontos nem traço: só os 11 números
+function maskCpf(el) { el.value = el.value.replace(/\D/g,'').slice(0,11); }
+// Registros antigos podem ter o CPF gravado com pontos; na tela aparece só com números
+const cpfTela = v => String(v??'').replace(/\D/g,'') || String(v??'').trim();
 function toast(msg,dur=2800){
   const t=document.getElementById('toast');
   t.textContent=msg; t.classList.add('show');
@@ -533,7 +545,19 @@ const CANAL_CLS = {
   'Monitoramento interno':'b-mon','Presencial':'b-pres',
   'Ministério Público':'b-mp','COMAS':'b-outro','Outro':'b-outro'
 };
-function badgeCanal(v){ return `<span class="badge ${CANAL_CLS[v]||'b-outro'}">${v||'—'}</span>`; }
+// Canal "Outro" guarda o texto digitado em canalOutro. Registros antigos podem ter
+// um canal fora da lista gravado direto em canalRecebido: também contam como "Outro".
+const canalBase = v => !v ? '' : IMP_CANAIS.includes(v) ? v : 'Outro';
+function textoCanal(r){
+  if(canalBase(r.canalRecebido)!=='Outro') return '';
+  return r.canalOutro || (r.canalRecebido!=='Outro' ? r.canalRecebido : '');
+}
+function nomeCanal(r){ const t = textoCanal(r); return t ? `Outro: ${t}` : (r.canalRecebido||''); }
+function badgeCanal(r){
+  const v = r.canalRecebido;
+  if(!v) return '—';
+  return `<span class="badge ${CANAL_CLS[v]||'b-outro'}" title="${esc(nomeCanal(r))}">${esc(nomeCanal(r))}</span>`;
+}
 
 // ── FILTER + SORT ────────────────────────────────────────
 function filtrar() {
@@ -543,8 +567,8 @@ function filtrar() {
   const ri = document.getElementById('fReit').value;
   const rc = document.getElementById('fReinc').value;
   return db.filter(r => {
-    if(q && !`${r.nome} ${r.cpf} ${r.numSeiSigrc} ${r.atribuidoPara} ${r.ordem}`.toLowerCase().includes(q)) return false;
-    if(c && !r.canalRecebido?.includes(c)) return false;
+    if(q && !`${r.nome} ${r.cpf} ${soDig(r.cpf)} ${r.numSeiSigrc} ${r.atribuidoPara} ${r.ordem} ${r.canalOutro||''} ${r.observacao||''}`.toLowerCase().includes(q)) return false;
+    if(c && !(c==='Outro' ? canalBase(r.canalRecebido)==='Outro' : r.canalRecebido?.includes(c))) return false;
     if(s==='respondido' && !r.respondidoEm) return false;
     if(s==='pendente'   &&  r.respondidoEm) return false;
     if(ri==='sim' && r.reiteracao!=='sim') return false;
@@ -634,23 +658,39 @@ function render() {
     return `<tr class="${i%2?'even':''}">
       <td><span class="num">${String(r.ordem).padStart(3,'0')}</span></td>
       <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td>
-      <td>${badgeCanal(r.canalRecebido)}</td>
+      <td>${badgeCanal(r)}</td>
       <td class="mono" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.numSeiSigrc||''}">${r.numSeiSigrc||'—'}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nome||''}">${r.nome||'—'}</td>
-      <td class="mono" style="white-space:nowrap">${r.cpf||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(cpfTela(r.cpf))||'—'}</td>
       <td>${reit}</td>
       <td>${reinc}</td>
       <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.atribuidoPara||''}">${r.atribuidoPara||'—'}</td>
       <td style="white-space:nowrap">${resp}</td>
       <td class="no-print" style="white-space:nowrap">
+        ${r.observacao ? `<button class="btn btn-outline btn-sm btn-obs" onclick="verObs(${r.id})">${obsAbertas.has(r.id)?'Ver menos':'Ver mais'}</button>` : ''}
         <button class="btn btn-outline btn-sm" onclick="editar(${r.id})">Editar</button>
         <button class="btn btn-danger btn-sm" onclick="pedirDel(${r.id})">Excluir</button>
       </td>
-    </tr>`;
+    </tr>` + (r.observacao ? `<tr class="obs-row ${obsAbertas.has(r.id)?'':'hidden'}"><td colspan="11"><b>Observação:</b> ${esc(r.observacao)}</td></tr>` : '');
   }).join('');
 }
 
+function verObs(id){ obsAbertas.has(id) ? obsAbertas.delete(id) : obsAbertas.add(id); render(); }
+
 // ── MODAL ────────────────────────────────────────────────
+function toggleCanal(){
+  const outro = document.getElementById('fCanal2').value==='Outro';
+  const el = document.getElementById('fCanalOutro');
+  el.classList.toggle('hidden', !outro);
+  if(!outro) el.classList.remove('err');
+}
+function toggleObs(abrir){
+  const box = document.getElementById('obsBox');
+  if(abrir===undefined) abrir = box.classList.contains('hidden');
+  box.classList.toggle('hidden', !abrir);
+  document.getElementById('bObs').textContent = abrir ? '− Ocultar observação' : '+ Ver mais (observação)';
+  if(abrir && !document.getElementById('mOverlay').classList.contains('hidden')) document.getElementById('fObs').focus();
+}
 function abrirNovo(){
   document.getElementById('mTitle').textContent='Novo Registro';
   document.getElementById('bSalvar').textContent='Cadastrar';
@@ -658,6 +698,9 @@ function abrirNovo(){
   ['fData','fSei','fRData','fROfc','fCpf','fAtrib','fResp'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('fNome').value='';
   document.getElementById('fCanal2').value='MDS';
+  document.getElementById('fCanalOutro').value='';
+  document.getElementById('fObs').value='';
+  toggleCanal(); toggleObs(false);
   document.getElementById('fReinc2').value='nao';
   document.querySelector('input[name=reit][value=nao]').checked=true;
   document.getElementById('rSub').classList.add('hidden');
@@ -674,12 +717,14 @@ function editar(id){
   document.getElementById('bSalvar').textContent='Salvar Alterações';
   document.getElementById('eId').value=id;
   document.getElementById('fData').value=r.dataRecebimento||'';
-  const selCanal=document.getElementById('fCanal2');
-  if(r.canalRecebido && ![...selCanal.options].some(o=>o.value===r.canalRecebido)) selCanal.add(new Option(r.canalRecebido));
-  selCanal.value=r.canalRecebido||'MDS';
+  document.getElementById('fCanal2').value=canalBase(r.canalRecebido)||'MDS';
+  document.getElementById('fCanalOutro').value=textoCanal(r);
+  toggleCanal();
+  document.getElementById('fObs').value=r.observacao||'';
+  toggleObs(!!r.observacao);
   document.getElementById('fSei').value=r.numSeiSigrc||'';
   document.getElementById('fNome').value=r.nome||'';
-  document.getElementById('fCpf').value=r.cpf||'';
+  document.getElementById('fCpf').value=cpfTela(r.cpf);
   document.querySelector(`input[name=reit][value="${r.reiteracao||'nao'}"]`).checked=true;
   document.getElementById('rSub').classList.toggle('hidden',r.reiteracao!=='sim');
   document.getElementById('fRData').value=r.reitData||'';
@@ -695,19 +740,26 @@ async function salvar(){
   const data=document.getElementById('fData').value;
   let ok=true;
   ['fNome'].forEach(fid=>{ const el=document.getElementById(fid); el.classList.toggle('err',!el.value.trim()); if(!el.value.trim()) ok=false; });
-  if(!ok){ toast('⚠ Preencha os campos obrigatórios.'); return; }
+  const canal=document.getElementById('fCanal2').value;
+  const elOutro=document.getElementById('fCanalOutro');
+  const outroVazio = canal==='Outro' && !elOutro.value.trim();
+  elOutro.classList.toggle('err', outroVazio);
+  if(outroVazio) ok=false;
+  if(!ok){ toast(outroVazio ? '⚠ Digite qual é o canal (opção Outro).' : '⚠ Preencha os campos obrigatórios.'); return; }
   const reit=document.querySelector('input[name=reit]:checked').value;
   const reg={
     dataRecebimento:data,
-    canalRecebido:document.getElementById('fCanal2').value,
+    canalRecebido:canal,
+    canalOutro:canal==='Outro'?elOutro.value.trim():'',
     numSeiSigrc:document.getElementById('fSei').value.trim(),
-    nome, cpf:document.getElementById('fCpf').value.trim(),
+    nome, cpf:soDig(document.getElementById('fCpf').value),
     reiteracao:reit,
     reincidencia:document.getElementById('fReinc2').value,
     reitData:reit==='sim'?document.getElementById('fRData').value:'',
     reitOficio:reit==='sim'?document.getElementById('fROfc').value.trim():'',
     atribuidoPara:document.getElementById('fAtrib').value.trim(),
     respondidoEm:document.getElementById('fResp').value,
+    observacao:document.getElementById('fObs').value.trim(),
   };
   try {
     if(id){
@@ -756,8 +808,10 @@ const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','
 // Nome da coluna na planilha (sem acentos, espaços e símbolos) → campo do sistema
 const IMP_COLUNAS = {
   canal:'canalRecebido', canalrecebido:'canalRecebido',
+  dadosdereferencia:'numSeiSigrc', dadosreferencia:'numSeiSigrc', referencia:'numSeiSigrc',
   sigrcsei:'numSeiSigrc', seisigrc:'numSeiSigrc', sei:'numSeiSigrc', sigrc:'numSeiSigrc', nseisigrc:'numSeiSigrc',
   nome:'nome',
+  observacao:'observacao', observacoes:'observacao', obs:'observacao',
   cpf:'cpf',
   datarecebimento:'dataRecebimento', dtrecebimento:'dataRecebimento',
   dataresposta:'respondidoEm', respondidoem:'respondidoEm',
@@ -768,9 +822,10 @@ const IMP_CANAIS = ['SEI','SIGRC','E-MAIL','MDS','Monitoramento interno','Presen
 
 function impCanal(v){
   v = String(v??'').trim();
-  if(!v) return 'Outro';
+  if(!v) return {canal:'Outro', outro:''};
   const k = chaveCol(v);
-  return IMP_CANAIS.find(c=>chaveCol(c)===k) || v;
+  const c = IMP_CANAIS.find(c=>chaveCol(c)===k);
+  return c ? {canal:c, outro:''} : {canal:'Outro', outro:v};
 }
 function impSimNao(v){
   const k = chaveCol(v);
@@ -785,7 +840,7 @@ function impCpf(v){
   // O Excel costuma apagar os zeros à esquerda do CPF quando a célula é numérica
   if(d.length>=8 && d.length<11) d = d.padStart(11,'0');
   if(d.length!==11) return {v:orig, aviso:'CPF com quantidade de dígitos diferente de 11'};
-  return {v:d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')};
+  return {v:d};
 }
 function impData(v){
   if(v===null || v===undefined || String(v).trim()==='') return {v:''};
@@ -804,7 +859,7 @@ function impData(v){
     return {v:'', erro:`data inválida: "${v}"`};
   return {v:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
 }
-// Mesmo CPF (ou mesmo nome, se não houver CPF) + mesmo número SEI/SIGRC + mesma data de recebimento
+// Mesmo CPF (ou mesmo nome, se não houver CPF) + mesmos dados de referência + mesma data de recebimento
 // = possível duplicado. Casos da mesma pessoa em datas diferentes são reincidências, não duplicados.
 function chaveDup(r){
   const quem = r.cpf ? r.cpf.replace(/\D/g,'') : chaveCol(r.nome);
@@ -863,10 +918,11 @@ function prepararImport(nomeArq, linhas){
     if(dResp.erro) erros.push('Resposta: '+dResp.erro);
     if(cpf.aviso)  avisos.push(cpf.aviso);
     const reinc = impSimNao(bruto.reincidencia);
+    const canal = impCanal(bruto.canalRecebido);
     if(reinc.erro) erros.push('Reincidência: '+reinc.erro);
     const reg = {
       dataRecebimento: dRec.v,
-      canalRecebido: impCanal(bruto.canalRecebido),
+      canalRecebido: canal.canal, canalOutro: canal.outro,
       numSeiSigrc: String(bruto.numSeiSigrc??'').trim(),
       nome: String(bruto.nome??'').trim(),
       cpf: cpf.v,
@@ -874,12 +930,13 @@ function prepararImport(nomeArq, linhas){
       reincidencia: reinc.v,
       atribuidoPara: String(bruto.atribuidoPara??'').trim(),
       respondidoEm: dResp.v,
+      observacao: String(bruto.observacao??'').trim(),
     };
     if(!reg.nome) erros.push('nome em branco');
     let dup = false;
     const k = chaveDup(reg);
     if(!erros.length && k){
-      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesma pessoa, mesmo SEI e mesma data)'); }
+      if(existentes.has(k)){ dup = true; avisos.push('já existe no sistema (mesma pessoa, mesmos dados de referência e mesma data)'); }
       else if(noArquivo.has(k)){ dup = true; avisos.push('repetido nesta planilha'); }
       noArquivo.add(k);
     }
@@ -971,9 +1028,9 @@ function renderImport(){
     const reinc = vai && (r.reincidencia==='sim' || novasSim.has(l));
     return `<tr class="${l.erros.length?'r-err':l.dup?'r-dup':''}">
       <td>${l.linha}</td><td>${sit}${msgs.length?`<div class="imp-msg">${msgs.map(esc).join('<br>')}</div>`:''}</td>
-      <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td><td>${esc(r.canalRecebido)}</td>
+      <td style="white-space:nowrap">${fd(r.dataRecebimento)}</td><td>${esc(nomeCanal(r))}</td>
       <td class="mono">${esc(r.numSeiSigrc)||'—'}</td><td>${esc(r.nome)||'—'}</td>
-      <td class="mono" style="white-space:nowrap">${esc(r.cpf)||'—'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(cpfTela(r.cpf))||'—'}</td>
       <td>${reinc?'<span class="badge b-sim">Sim</span>':(vai?'Não':'—')}</td><td>${esc(r.atribuidoPara)||'—'}</td>
       <td style="white-space:nowrap">${fd(r.respondidoEm)}</td></tr>`;
   }).join('') : '<tr class="empty-row"><td colspan="10">A planilha não tem linhas com dados.</td></tr>';
